@@ -1,0 +1,30 @@
+# ======================
+# Python
+# ======================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.env
+
+# ======================
+# Data / Runtime State
+# ======================
+pandora_data/
+logs/
+*.jsonl
+.cache/
+.replay/
+
+# ======================
+# OS / IDE
+# ======================
+.DS_Store
+.vscode/
+.idea/
+
+# ======================
+# Local config
+# ======================
+config/*.local.yaml
