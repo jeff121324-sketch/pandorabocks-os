@@ -28,3 +28,7 @@ logs/
 # Local config
 # ======================
 config/*.local.yaml
+# ======================
+# Library index (generated data)
+# ======================
+library/index/*.json
