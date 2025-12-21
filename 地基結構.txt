@@ -1,0 +1,32 @@
+=======================
+       APP 層
+=======================
+AISOP Runtime
+Trading Runtime
+AI Core / 議會
+PB-Lang（事件語言）
+
+=======================
+     OS 層（核心）
+=======================
+EventBus（訊息匯流）
+Pipeline（資料流）
+State Manager（狀態）
+Scheduler（節奏）
+
+=======================
+   Foundation 地基層
+=======================
+DataUnit 抽象
+Resource Resolver
+Universal Clock
+Validation Layer
+Cross-platform Path Layer
+
+=======================
+     Python/OS
+=======================
+檔案系統、平台、IO
+
+啟動順序
+tradingRuntime ---> tradingBridge ---> PB-Lang ---> EventBus ---> Pandora OS

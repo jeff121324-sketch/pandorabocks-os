@@ -1,0 +1,235 @@
+# Pandora / AISOP 專案新架構說明書（依目前目錄自動整理）
+
+這份文件是依你目前提供的各頂層資料夾（zip）內容自動掃描整理而成，目標是：**讓你/協作者一眼看懂每個資料夾在幹嘛、該往哪裡加新功能、彼此怎麼串起來**。
+
+## 0. 頂層資料夾總覽（你現在的產品線切分）
+
+- **pandora_core/**：母平台（Pandora OS）核心，Runtime / EventBus / 模組載入 / AI 管理等。
+- **shared_core/**：全產品線共用底座（事件格式、工具、感知核心、raw layer 等）。
+- **trading_core/**：交易產品線（TradingRuntime / TradingBridge / 市場資料對接等）。
+- **aisop_core/**：AISOP 產品線（SOP/飯店流程/行業模組的核心）。
+- **pblang_core/**：PB Language 產品線（語義/意圖/翻譯/指令解析等，獨立演進）。
+- **config/**：設定、環境參數、（可能含 .env 範本或設定檔）。
+- **locales/**：多語系資源（i18n）。
+- **event_raw/**：RAW EVENT LAYER 資料落地區（jsonl/logs/弱標籤等）。
+- **outputs/**：報告/匯出/產出物。
+
+## 1. 系統資料流（你目前已跑通的主幹）
+
+### 1.1 事件流（實戰）
+
+1) **任意資料來源**（K 線、文字輸入、POS、IoT…）
+→ 2) **PerceptionGateway / PerceptionCore**（filter/auto_fix/anti_poison/enrich/make_event/validate）
+→ 3) **PBEvent（DataUnit 規格）**
+→ 4) **EventBus / ZeroCopyEventBus**（Runtime 內部廣播）
+→ 5) **下游模組**（Trading / AISOP / AI Manager / LogWriter / Replay）。
+
+### 1.2 RAW EVENT LAYER（你今天完成的關鍵）
+
+- 在 Runtime 端把事件「旁路」寫入 `event_raw/logs.jsonl`，並附上 `_weak_labels`（弱標籤）。
+- 目的：**先把資料湖打底**，後面圖書館/索引/語義標籤/回放器都可以直接吃這個格式。
+
+## 2. 目錄與責任邊界（如何避免之後又糾纏）
+
+### 2.1 shared_core = 全產品線共用『地基』
+
+- 只放：事件格式、通用工具、共用的感知核心、raw layer、可復用的 validator。
+- 不放：交易策略、不放：AISOP 行業邏輯、不放：PB-Lang 的演算法細節（那要放 pblang_core）。
+
+### 2.2 pblang_core = PB 語言產業線（獨立演進）
+
+- 任何『語意理解』、『意圖分類』、『指令解析』、『語言轉結構』都放這裡。
+- Perception 只需要在 enrich 階段「呼叫」PB-Lang，不要把 PB-Lang 內嵌進 adapter。
+
+### 2.3 trading_core / aisop_core = 子文明（產品線）
+
+- 交易與 AISOP 都只吃 PBEvent；資料來源統一經過 gateway。
+- 這樣你的 multi-source 壓力測試才會越跑越穩，因為入口永遠一致。
+
+## 3. 依目前檔案自動盤點（每個資料夾有哪些東西）
+
+## pandora_core/
+
+### 檔案
+- `ai_manager.py` — AIManager v3 — 專管 AI plugin（Attacker / Defender / Arbiter / AISOPRuntime） 不負責 TradingRuntime、DataRuntime、SystemRuntime。
+- `config_manager.py` — config_manager.py 統一管理 config/ 底下的 YAML 設定檔 例如： - pandora.yaml - trading.yaml - aisop.yaml
+- `error_manager.py` — error_manager.py 集中管理錯誤處理邏輯，之後可以： - 寫入 logs - 發 LINE / Discord 通知 - 觸發健康檢查
+- `event_bus.py`
+- `health_check.py` — health_check.py 提供簡單的健康檢查框架，之後可以掛： - 交易資料來源是否正常 - 事件匯流排是否有活動 - RewardHub / Redis / DB 是否在線
+- `module_loader.py` — module_loader.py 負責載入各種 plugin / runtime 模組。 第一版先做「安全載入」，之後你要再加檔案監控、熱更新都可以接在這裡。
+- `pandora_runtime.py` — pandora_runtime.py Pandora OS 的啟動器，負責： - 初始化 AIManager、ModuleLoader、ErrorManager、HealthCheck - 掛載不同的子文明（TradingCore / AISOP / others） - 提供 run() 介面給 main.py 啟動
+- `plugin_base.py`
+
+## shared_core/
+
+### 子資料夾
+- **event/**
+  - `zero_copy_event_bus.py` — shared_core/event/zero_copy_event_bus.py
+- **event_raw/**
+  - `__init__.py`
+  - `event_log_writer.py`
+  - `logs.jsonl`
+  - `weak_labeler.py` — weak_labeler.py
+- **foundation/**
+  - `clock.py` — shared_core/foundation/clock.py
+  - `data_unit.py` — shared_core/foundation/data_unit.py
+  - `legacy_event_bus.py` — shared_core/foundation/event_bus.py
+  - `resource_resolver.py` — shared_core/foundation/resource_resolver.py
+- **pb_lang/**
+  - `__init__.py`
+  - `pb_ai.py` — shared_core/pb_lang/pb_ai.py
+  - `pb_event_validator.py` — shared_core/pb_lang/pb_event_validator.py
+  - `pb_guest.py`
+  - `pb_housekeeping.py`
+  - `pb_market.py` — shared_core/pb_lang/pb_market.py
+  - `pb_system.py` — shared_core/pb_lang/pb_system.py
+  - `pb_translate.py` — shared_core/pb_lang/pb_translate.py
+  - `perception_adapter.py` — shared_core/pb_lang/perception_adapter.py
+- **perception_core/**
+  - `__init__.py`
+  - `blacklist.py` — blacklist.py Perception Layer 4 負責管理「不可信來源」「被封鎖的 API」「惡意事件」等
+  - `collector.py` — collector.py 資料收集器（Perception Layer 1） 不同的子文明會實作自己的 Collector 子類別。
+  - `core.py`
+  - `pb_language.py` — pb_language.py PB-Lang 編碼器（Perception Layer 3） 將任何資料轉換為 PB-Lang 統一格式。
+  - `perception_gateway.py`
+  - `pipeline_core.py` — shared_core/perception_core/pipeline_core.py
+  - `sanitizer.py` — sanitizer.py 資料清洗器（Perception Layer 2） 負責： - 過濾 None / NaN / 空資料 - 移除明顯異常 - 防止毒資料進入 PB-Lang
+  - `simple_text_adapter.py` — shared_core/perception_core/simple_text_adapter.py
+- **replay/**
+  - `replay_engine.py`
+- **security/**
+  - `blacklist.py` — shared_core/security/blacklist.py
+  - `symbols.txt`
+
+### 檔案
+- `df_utils.py`
+- `event_schema.py` — shared_core/event_schema.py
+- `file_utils.py`
+- `json_utils.py`
+- `locale_manager.py`
+- `log_utils.py`
+- `path_loader.py`
+- `resource_manager.py`
+- `time_utils.py`
+
+## pblang_core/
+
+### 檔案
+- `__init__.py`
+- `classifier.py`
+- `command_parser.py`
+- `schema.py`
+- `semantics.py`
+- `sentiment.py` — shared_core/pblang_core/semantics.py
+- `tokenizer.py`
+
+## trading_core/
+
+### 子資料夾
+- **data/**
+  - `__init__.py`
+- **data_cache/**
+  - `__init__.py`
+- **data_provider/**
+  - `fetcher.py` — trading_core/data_provider/fetcher.py
+- **decision_pipeline/**
+  - `__init__.py`
+- **logs/**
+  - `__init__.py`
+- **perception/**
+  - `market_adapter.py` — trading_core/perception/market_adapter.py
+- **plugins/**
+  - `__init__.py`
+- **risk/**
+  - `__init__.py`
+- **state/**
+  - `__init__.py`
+- **trade_logs/**
+  - `__init__.py`
+
+### 檔案
+- `trading_bridge.py` — trading_core/trading_bridge.py
+- `trading_runtime.py` — trading_core/trading_runtime.py
+
+## aisop_core/
+
+### 子資料夾
+- **action/**
+  - `__init__.py`
+- **cognition/**
+  - `__init__.py`
+- **flows/**
+  - `__init__.py`
+- **perception/**
+  - `__init__.py`
+  - `hotel_adapter.py`
+
+### 檔案
+- `aisop_runtime.py` — aisop_core/aisop_runtime.py
+
+## config/
+
+### 子資料夾
+- **config/**
+  - `aisop.yaml`
+  - `pandora.yaml`
+  - `trading.yaml`
+
+## locales/
+
+### 子資料夾
+- **en/**
+  - `report_daily.yaml`
+  - `system_messages.yaml`
+- **ja/**
+  - `report_daily.yaml`
+  - `system_messages.yaml`
+- **zh-TW/**
+  - `report_daily.yaml`
+  - `system_messages.yaml`
+
+## event_raw/
+
+### 檔案
+- `logs.jsonl`
+
+## outputs/
+
+### 子資料夾
+- **backups/**
+  - `config/`
+  - `models/`
+- **debug/**
+  - `sandbox/`
+  - `traces/`
+- **exports/**
+  - `datasets/`
+  - `signals/`
+- **logs/**
+  - `aisop/`
+  - `system/`
+  - `trading/`
+- **reports/**
+  - `daily/`
+  - `monthly/`
+  - `weekly/`
+
+## 4. 你接下來最推薦的『落地順序』
+
+1) **把 text.input 正式接進 PandoraRuntime 真實事件流**（讓 gateway 註冊、bus 發佈、raw layer 落盤都吃得到）。
+2) **Multi-source 壓力測試**：同時灌 market.kline + text.input（確認 listener、writer、validator 都不爆）。
+3) **ReplayEngine v2**：直接以 `event_raw/logs.jsonl` 做資料源（這樣回放器就是圖書館的前身）。
+4) **PB-Lang v1 固化**：把 pblang_core 封裝出穩定 API（例如 `analyze(text)->dict`），並加版本號。
+5) **圖書館（Library）**：在 RAW layer 之上做索引/查詢/標籤審核（弱標籤→強標籤）。
+
+## 5. 命名與規格（建議你現在就鎖死）
+
+- **事件 type**：用 `domain.action`（例：`market.kline`, `text.input`, `hotel.checkout`）。
+- **資料落盤**：JSONL（每行一個事件 dict），保證可 append、可 streaming。
+- **弱標籤欄位**：統一使用 `"_weak_labels"`（避免污染 meta/payload 的標準欄位）。
+- **PB-Lang 產物欄位**：建議放 `meta.pb_semantics` 或 `payload.semantics`，二選一固定，別兩套混用。
+
+## 6. 你剛剛截圖遇到的『看不到新檔案』類問題（根因與固定解法）
+
+- **根因**：EventLogWriter 寫入路徑相對於「啟動時工作目錄」；你在不同腳本位置跑，cwd 不同，就會寫到別的地方。
+- **固定解法**：所有落盤路徑都用 `base_dir`（Runtime 的根）做 join（你已經開始用 Path(base_dir)/... 了，繼續鎖死這個規則）。

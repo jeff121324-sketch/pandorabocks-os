@@ -1,0 +1,185 @@
+```
+AISOP_SYSTEM/   ← 專案根目錄
+│
+├── main.py                         ← 系統啟動入口（只負責接線與啟動）
+│
+├── pandora_core/                   ← 母平台 Pandora OS（作業系統層）
+│   ├── pandora_runtime.py          ← 主執行器（EventBus / Runtime / Validator 中樞）
+│   ├── event_bus.py                ← 安全事件匯流排（PBEvent + 驗證）
+│   ├── zero_copy_event_bus.py      ← Zero-Copy 高速事件匯流排
+│   ├── plugin_base.py              ← 所有 Runtime / Plugin 的共同基底
+│   ├── ai_manager.py               ← AI / Runtime 生命週期管理（不參與決策）
+│   ├── module_loader.py            ← 自動模組掃描與載入（未來擴充）
+│   ├── error_manager.py            ← 系統級錯誤捕捉、上報、分類
+│   ├── health_check.py             ← 健康檢查（心跳 / 延遲 / 錯誤率）
+│   └── config_manager.py           ← 讀取 pandora.yaml 等系統設定
+│
+├── shared_core/                    ← 文明級共用核心（任何產業線共用）
+│   ├── path_loader.py              ← 跨平台路徑注入（main 最先呼叫）
+│   ├── event_schema.py             ← PBEvent 類別定義（事件語言原子）
+│   ├── pb_event_validator.py       ← PBEventValidator（strict / soft）
+│   ├── time_utils.py               ← 時間與時區工具
+│   ├── file_utils.py               ← 檔案處理工具
+│   ├── df_utils.py                 ← DataFrame 工具
+│   ├── json_utils.py               ← JSON 工具
+│   ├── log_utils.py                ← Log 統一工具
+│   ├── locale_manager.py           ← 多語系管理
+│   │
+│   ├── perception_core/            ← 共用感知核心（Raw → PBEvent）
+│   │   ├── base_adapter.py          ← Adapter 抽象基底（六段式流程）
+│   │   ├── filters.py               ← filter：垃圾/空資料過濾
+│   │   ├── fixer.py                 ← auto_fix：格式/數值修補
+│   │   ├── anti_poison.py           ← anti_poison：注入/攻擊防禦
+│   │   ├── enricher.py              ← enrich：timestamp / source / normalize
+│   │   ├── event_factory.py         ← make_event：產生 PBEvent
+│   │   ├── validator_bridge.py      ← Validator 封裝橋接
+│   │   ├── perception_gateway.py    ← 感知統一入口（source → adapter）
+│   │   └── registry.py              ← Adapter 註冊表
+│   │
+│   └── pblang_core/                ← PB-Lang（獨立語言產業線）
+│       ├── semantics.py             ← PB 語言語意分析（Text → Semantics）
+│       ├── tokenizer.py             ←（預留）語言切詞
+│       ├── intent.py                ←（預留）意圖抽取
+│       └── README.md                ← PB-Lang 規格說明
+│
+├── event_raw/                      ← RAW EVENT LAYER（文明級原始資料）
+│   ├── logs.jsonl                  ← 所有 PBEvent 原始事件（含弱標籤）
+│   ├── event_log_writer.py         ← EventLogWriter（寫入 RAW LAYER）
+│   └── weak_labeler.py             ← Weak Label Processor（輕量語義標註）
+│
+├── trading_core/                   ← 交易產業線（Pandora Plugin）
+│   ├── trading_runtime.py          ← TradingRuntime（資料抓取 / tick）
+│   ├── trading_bridge.py           ← DataFrame → PBEvent（Ultra Zero-Copy）
+│   │
+│   ├── perception/                 ← 交易感知層
+│   │   └── market_adapter.py       ← MarketKlineAdapter（Firewall v3）
+│   │
+│   ├── decision_pipeline/          ← 運算 / 決策層
+│   │   ├── indicator_engine.py     ← 指標引擎
+│   │   └── signal_generator.py     ← 訊號生成器
+│   │
+│   ├── plugins/                    ← 交易人格模組
+│   │   ├── attacker.py
+│   │   ├── defender.py
+│   │   ├── chairman.py
+│   │   └── reward_hub.py
+│   │
+│   ├── state/                      ← 狀態管理
+│   │   ├── trade_state.py
+│   │   └── position_manager.py
+│   │
+│   ├── risk/                       ← 風控模組
+│   │   └── risk_guard.py
+│   │
+│   ├── data/                       ← 原始資料 / 測試資料
+│   ├── data_cache/                 ← 抓取後快取資料
+│   ├── logs/                       ← 交易系統 log
+│   └── trade_logs/                 ← 下單 / 成交紀錄
+│
+├── aisop_core/                     ← AISOP 產業線（服務業 / 飯店）
+│   ├── aisop_runtime.py            ← AISOPRuntime（人格大腦 Plugin）
+│   │
+│   ├── perception/                 ← AISOP 感知層
+│   │   └── input_handlers.py       ← 前台 / IoT / POS / Text 輸入
+│   │
+│   ├── cognition/                  ← 認知 / 推理層
+│   │   └── reasoning_engine.py
+│   │
+│   ├── action/                     ← 動作 / 派工 / 輸出
+│   │   └── executor.py
+│   │
+│   └── flows/                      ← 場景流程
+│       ├── hotel_checkout_flow.py
+│       └── hotel_frontdesk_flow.py
+│
+├── config/                         ← 設定檔
+│   ├── pandora.yaml                ← 系統級設定（Bus / Plugin）
+│   ├── trading.yaml                ← 交易策略 / 風控設定
+│   └── aisop.yaml                  ← AISOP 場景設定
+│
+├── locales/                        ← 多語系資源
+│   ├── zh-TW/
+│   │   ├── report_daily.yaml
+│   │   └── system_messages.yaml
+│   ├── en/
+│   └── ja/
+│
+├── outputs/                        ← 系統產出
+│   ├── logs/
+│   │   ├── system/
+│   │   ├── trading/
+│   │   └── aisop/
+│   ├── reports/
+│   │   ├── daily/
+│   │   ├── weekly/
+│   │   └── monthly/
+│   ├── exports/
+│   │   ├── signals/
+│   │   └── datasets/
+│   ├── backups/
+│   │   ├── config/
+│   │   └── models/
+│   └── debug/
+│       ├── traces/
+│       └── sandbox/
+│
+└── tests/                          ← 測試與壓力驗證
+    ├── test_perception.py
+    ├── perception_visual_debug.py
+    ├── perception_stress_test.py
+    └── runtime_stress_test.py
+
+
+
+
+檔案系統總架構（未來所有輸出都放這裡）
+
+outputs/
+  logs/
+    system/           ← 系統運行 log（啟動、錯誤、健康檢查）
+    trading/          ← 交易決策、下單流程 log
+    aisop/            ← 未來 AISOP 用
+  reports/
+    daily/            ← 日報（多語言）
+    weekly/
+    monthly/
+  exports/
+    signals/          ← 給 X / Line / Discord 的訊號輸出
+    datasets/         ← 匯出給別的系統用的資料
+  backups/
+    config/
+    models/
+  debug/
+    traces/
+    sandbox/
+
+Pandora OS
+ ├── PB-Lang（語言層）
+ ├── EventBus v1（主匯流排）
+ ├── EventBus v1-legacy（舊版本，提供相容性）
+ ├── Zero-Copy EventBus（高效能，不同用途）
+ ├── Plugins（AI人格 / TradingRuntime / AISOPRuntime）
+ ├── Perception Layer（你剛做的 adapters）
+
+
+ReplayEngine v1 的運作方式
+raw dict（jsonl / event log）
+    ↓
+ReplayEngine.replay(...)
+    ↓
+gateway.process(key, raw, soft=True)
+    ↓
+adapter.filter / adapter.auto_fix / adapter.anti_poison
+    ↓
+adapter.enrich → adapter.make_event
+    ↓
+validator.soft
+    ↓
+fast_bus.publish(event)
+PB語言
+pb_language  ───► shared_core/pb_lang
+      ▲
+      │
+perception_core (text adapter)
+      │
+PandoraRuntime
