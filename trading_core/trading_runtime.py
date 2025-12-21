@@ -5,6 +5,7 @@ from trading_core.trading_bridge import TradingBridge
 from trading_core.data_provider.fetcher import MarketDataFetcher
 from trading_core.perception.market_adapter import MarketKlineAdapter
 from shared_core.perception_core.perception_gateway import PerceptionGateway
+from shared_core.world.capability_types import WorldCapability
 
 class TradingRuntime:
     """
@@ -13,9 +14,13 @@ class TradingRuntime:
     ✔ 可獨立取代 / 插拔
     ✔ 資料來源 → PB-Lang → EventBus（Gateway）
     """
-
+    plugin_name = "TradingRuntime"
+    # === Plugin Capability Declaration v1.1 ===
+    required_capabilities = {
+        WorldCapability.EXTERNAL_TICK,
+        WorldCapability.MULTI_RUNTIME,
+    }
     def __init__(self, rt, symbol="BTC/USDT"):
-        self.rt = rt
         self.bus = rt.bus
         self.fast_bus = rt.fast_bus            # ★ 統一從 Runtime 取得 fast_bus
         self.symbol = symbol

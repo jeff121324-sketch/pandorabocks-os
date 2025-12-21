@@ -32,6 +32,7 @@ load_dotenv()
 class PandoraRuntime:
     def __init__(self, base_dir="."):
         self.base_dir = base_dir
+        self.world_id = "pandora"
         self.plugins = {}
 
         # =========================================================
@@ -62,6 +63,40 @@ class PandoraRuntime:
         self.adapters = {}
 
         print("[PandoraRuntime] 🌍 Initialized")
+
+        # =========================================================
+        # Runtime Attach Guard（World Capability）
+        # =========================================================
+        from shared_core.world.registry import WorldRegistry
+        from shared_core.world.capability_gate import WorldCapabilityGate
+        from pandora_core.runtime_attach_guard import RuntimeAttachGuard
+        from shared_core.world.world_context import WorldContext
+
+        # 1️⃣ 建立 World Registry（單一實例）
+        self.world_registry = WorldRegistry()
+
+        # 建立 WorldContext（這才是真正的「世界」）
+        pandora_world = WorldContext(
+            world_id="pandora",
+            world_type="core",          
+            owner="pandora-os",         # ← 新增（或用你的組織 / 系統名）
+            description="Pandora OS Core Runtime"
+        )        
+        # （暫時）先註冊 pandora 世界本身
+        self.world_registry.register(pandora_world)
+
+        # 你之後會在這裡註冊能力（之後再做）
+        # self.world_registry.register_capabilities(...)
+
+        # 2️⃣ 用 registry 建立 Gate
+        self.world_capability_gate = WorldCapabilityGate(
+            registry=self.world_registry
+        )
+
+        # 3️⃣ 注入 Runtime Attach Guard
+        self._runtime_attach_guard = RuntimeAttachGuard(
+            capability_gate=self.world_capability_gate
+        )
 
         # =========================================================
         # Adapters
@@ -161,30 +196,45 @@ class PandoraRuntime:
     # Plugin Loader（AI plugin 用，會自動注入 bus）
     # -------------------------------------------------------
     def load_plugin(self, module_path: str, class_name: str):
-        module = self.loader.load_module(module_path)
-        if not module:
-            return None
-
-        cls = getattr(module, class_name, None)
+        cls, plugin_meta = self.loader.load_class(module_path, class_name)
         if not cls:
             print(f"[PandoraRuntime] ❌ Class {class_name} not found in module")
             return None
 
-        # ★ 新版 plugin 會接受 bus
+        # ⚠️ Step 4-2：只「保存」 metadata，不做判斷
+        plugin_name = plugin_meta["plugin_name"]
+        required_capabilities = plugin_meta["required_capabilities"]
+
         try:
             instance = cls(self.bus)
         except TypeError:
-            # 舊版 plugin fallback
             instance = cls()
 
+            # 🔹 把 metadata 掛在 instance 上（供 Step 4-3 使用）
+        instance._plugin_name = plugin_name
+        instance._required_capabilities = required_capabilities
+
         self.manager.register(instance)
-        print(f"[PandoraRuntime] 🔌 Plugin installed: {class_name}")
+        print(
+            f"[PandoraRuntime] 🔌 Plugin loaded: {plugin_name} "
+            f"(caps={list(required_capabilities)})"
+        )
         return instance
+
     
     def load_plugin_instance(self, name, instance):
         """
-        將已建立的物件註冊為 Plugin。
+        將已建立的物件註冊為 Plugin（受 World / Capability Gate 保護）
         """
+
+        # === Runtime Attach Guard ===
+        if hasattr(self, "_runtime_attach_guard") and self.world_id:
+            self._runtime_attach_guard.ensure_can_attach(
+                world_id=self.world_id,
+                plugin_name=name,
+                plugin_instance=instance,
+            )
+
         # 如果 plugin 有 on_load()，則呼叫它（讓它訂閱事件）
         if hasattr(instance, "on_load"):
             instance.on_load(self.bus)

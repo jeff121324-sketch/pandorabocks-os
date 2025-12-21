@@ -64,12 +64,9 @@ def main():
     # 建立 TradingRuntime（世界心跳）
     # ---------------------------------------------------
     try:
-        trade_rt = TradingRuntime(rt, rt.bus, "BTC/USDT")
+        trade_rt = TradingRuntime(rt, symbol="BTC/USDT")
 
-        # ➤ 把 TradingRuntime 正式掛載成 Plugin（最重要）
-        rt.load_plugin_instance("TradingRuntime", trade_rt)
-
-        # ➤ 再讓它成為外部心跳源
+        # ➤ 只註冊為「外部心跳源」
         rt.register_external_tick_source(trade_rt)
 
         print("[Main] ✔ TradingRuntime 已啟動並掛載 Plugin")
