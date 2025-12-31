@@ -1,6 +1,0 @@
-{"decision": {"agenda_id": "agenda-test-001",
- "decision": "HOLD", "confidence": 0.62, 
- "reasons": ["RSI neutral", "Volume stable"], 
- "report_type": "daily", "narration_cost": "low"}, 
- "narrative": "This decision was generated based on current market signals. No anomalies were detected and risk remains within acceptable range.", 
- "meta": {"source": "narration", "report_type": "daily"}}
