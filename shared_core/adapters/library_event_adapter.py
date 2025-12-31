@@ -51,7 +51,7 @@ class LibraryEventAdapter:
             timestamp=timestamp,
         )
 
-        if self.validator:
+        if self.validator and not event.type.startswith("library."):
             self.validator.validate(event)
 
         return event

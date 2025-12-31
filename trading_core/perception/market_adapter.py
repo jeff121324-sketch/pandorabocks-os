@@ -50,10 +50,17 @@ class MarketKlineAdapter(PerceptionAdapter):
             return None
 
         # 基本欄位檢查
-        for key in ("open", "high", "low", "close"):
+        if self.mode == "realtime":
+            required = ("open", "high", "low", "close")
+        else:  # batch / replay
+            required = ("open", "close")
+
+        for key in required:
             v = raw.get(key)
             if v is None or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0:
-                print(f"[MarketKlineAdapter] ⛔ {key}={v} 非法，丟棄資料")
+                print(
+                    f"[MarketKlineAdapter] ⛔ ({self.mode}) {key}={v} 非法，丟棄資料"
+                )
                 return None
 
         vol = raw.get("volume", 0)

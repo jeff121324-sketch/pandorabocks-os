@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+from datetime import datetime, timezone
+
+# === 專案根目錄（aisop/）===
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 import pandas as pd
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -41,14 +49,17 @@ def emit_one(rt, adapter, row, symbol, interval, fast=False, zero_event=False, s
 
     if zero_event:
         event = ZeroPBEvent("market.kline", raw, raw["ts"])
-        rt.fast_bus.publish(event)
+        rt.fast_bus.publish(event, skip_log=True)
         return
 
-    # Normal adapter → PBEvent
     if skip_validator:
         event = adapter.to_event_no_validate(raw)
-    else:
-        event = adapter.to_event(raw)
+        if event is not None:
+            rt.fast_bus.publish(event)
+        return
+
+    # Normal validated path
+    event = adapter.to_event(raw)
 
     if fast:
         rt.fast_bus.publish(event)

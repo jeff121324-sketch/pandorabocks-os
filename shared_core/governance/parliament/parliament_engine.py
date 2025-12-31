@@ -3,13 +3,16 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Dict, Any, List, Tuple
 from pathlib import Path
-
+from collections import deque
 try:
     import yaml  # type: ignore
 except Exception:
     yaml = None
 
 from .parliament_schema import Proposal, Vote, Decision
+from shared_core.governance.parliament.context import GovernanceContext
+from shared_core.governance.chair.basic_chair import BasicChairStrategy
+from shared_core.governance.arbiter.basic_arbiter import StabilityFirstArbiter
 
 
 class ParliamentEngine:
@@ -20,6 +23,13 @@ class ParliamentEngine:
     """
 
     def __init__(self, rules_path: str | Path | None = None, rules: Dict[str, Any] | None = None):
+
+        # ✅ 永遠先初始化內部狀態
+        self._decision_history = deque(maxlen=10)
+        
+        # v0.5 governance actors
+        self._chair = BasicChairStrategy()
+        self._arbiter = StabilityFirstArbiter()
         if rules is not None:
             self.rules = rules
             return
@@ -28,6 +38,8 @@ class ParliamentEngine:
             raise ValueError("Provide rules_path or rules dict.")
 
         self.rules = self._load_rules(rules_path)
+
+
 
     def _load_rules(self, rules_path: str | Path) -> Dict[str, Any]:
         if yaml is None:
@@ -44,7 +56,7 @@ class ParliamentEngine:
     def evaluate(self, proposal: Proposal, votes: List[Vote]) -> Decision:
         """
         Evaluate a proposal given votes, return Decision.
-        This function is deterministic and stateless.
+        Deterministic voting + governance guards (v0.5).
         """
         self._validate_inputs(proposal, votes)
 
@@ -57,8 +69,27 @@ class ParliamentEngine:
         defer_if_low_conf = bool(defaults.get("defer_if_low_confidence", True))
         low_conf_threshold = float(defaults.get("low_confidence_threshold", 0.35))
 
+        # -----------------------------
+        # Governance Context (v0.5)
+        # -----------------------------
+        context = GovernanceContext(
+            world_capabilities=proposal.constraints.get("world_capabilities", []),
+            decision_history=list(self._decision_history),
+        )
+
+        # -----------------------------
+        # Chair pre-review (procedural / capability / stability)
+        # -----------------------------
+        chair_decision = self._chair.review(proposal, context)
+        if chair_decision is not None:
+            self._decision_history.append(chair_decision)
+            return chair_decision
+
+        # -----------------------------
+        # Voting phase (原本邏輯)
+        # -----------------------------
         if len(votes) < min_votes:
-            return Decision(
+            decision = Decision(
                 agenda_id=proposal.agenda_id,
                 proposal_id=proposal.proposal_id,
                 outcome="deferred",
@@ -66,13 +97,14 @@ class ParliamentEngine:
                 arbitration_required=True,
                 notes=f"insufficient_votes<{min_votes}",
             )
+            self._decision_history.append(decision)
+            return decision
 
         approve_score, reject_score, total_weighted_conf = self._score_votes(votes, weights)
         total_score = approve_score + reject_score
 
-        # If everyone abstained (or no weight), defer
         if total_score <= 1e-12:
-            return Decision(
+            decision = Decision(
                 agenda_id=proposal.agenda_id,
                 proposal_id=proposal.proposal_id,
                 outcome="deferred",
@@ -80,12 +112,13 @@ class ParliamentEngine:
                 arbitration_required=True,
                 notes="no_effective_votes",
             )
+            self._decision_history.append(decision)
+            return decision
 
         approve_ratio = approve_score / total_score
 
-        # Low confidence -> defer + arbitration flag
         if defer_if_low_conf and total_weighted_conf < float(thresholds.get("min_total_confidence", 0.9)):
-            return Decision(
+            decision = Decision(
                 agenda_id=proposal.agenda_id,
                 proposal_id=proposal.proposal_id,
                 outcome="deferred",
@@ -93,10 +126,11 @@ class ParliamentEngine:
                 arbitration_required=True,
                 notes="low_total_confidence",
             )
+            self._decision_history.append(decision)
+            return decision
 
-        # If many votes have too-low confidence, defer
         if defer_if_low_conf and self._has_too_many_low_confidence(votes, low_conf_threshold):
-            return Decision(
+            decision = Decision(
                 agenda_id=proposal.agenda_id,
                 proposal_id=proposal.proposal_id,
                 outcome="deferred",
@@ -104,12 +138,17 @@ class ParliamentEngine:
                 arbitration_required=True,
                 notes="many_low_confidence_votes",
             )
+            self._decision_history.append(decision)
+            return decision
 
         close_margin = float(thresholds.get("close_margin", 0.05))
         arbitration_required = abs(approve_ratio - approve_threshold) <= close_margin
 
+        # -----------------------------
+        # Final outcome
+        # -----------------------------
         if approve_ratio >= approve_threshold:
-            return Decision(
+            decision = Decision(
                 agenda_id=proposal.agenda_id,
                 proposal_id=proposal.proposal_id,
                 outcome="approved",
@@ -118,7 +157,7 @@ class ParliamentEngine:
                 notes=f"approve_ratio={approve_ratio:.3f}",
             )
         else:
-            return Decision(
+            decision = Decision(
                 agenda_id=proposal.agenda_id,
                 proposal_id=proposal.proposal_id,
                 outcome="rejected",
@@ -126,6 +165,18 @@ class ParliamentEngine:
                 arbitration_required=arbitration_required,
                 notes=f"approve_ratio={approve_ratio:.3f}",
             )
+
+        # -----------------------------
+        # Arbiter (only if needed)
+        # -----------------------------
+        if decision.arbitration_required:
+            arbiter_decision = self._arbiter.arbitrate(decision, context)
+            if arbiter_decision is not None:
+                self._decision_history.append(arbiter_decision)
+                return arbiter_decision
+
+        self._decision_history.append(decision)
+        return decision
 
     # -----------------------------
     # Internals

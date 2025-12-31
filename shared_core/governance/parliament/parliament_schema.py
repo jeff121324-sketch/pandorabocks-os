@@ -37,10 +37,6 @@ class Agenda:
 
 @dataclass(frozen=True)
 class Proposal:
-    """
-    議會的提案單位。
-    只描述『想做什麼』與『限制條件』，不描述怎麼做。
-    """
     agenda_id: str
     proposal_id: str
     proposer_role: str
@@ -48,6 +44,19 @@ class Proposal:
     constraints: Dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=datetime.utcnow)
 
+    # === Governance v0.5 methods ===
+
+    def is_procedurally_valid(self) -> bool:
+        return (
+            bool(self.agenda_id)
+            and bool(self.proposal_id)
+            and bool(self.proposer_role)
+            and isinstance(self.action, dict)
+        )
+
+    def requires_capability_not_in(self, world_caps) -> bool:
+        required = self.constraints.get("required_capabilities", [])
+        return any(cap not in world_caps for cap in required)
 
 # =============================
 # Vote

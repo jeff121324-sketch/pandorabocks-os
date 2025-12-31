@@ -9,14 +9,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from pprint import pprint
-
+from uuid import uuid4
+from datetime import datetime, timezone
 from shared_core.world.registry import WorldRegistry
 from shared_core.world.world_context import WorldContext
 from shared_core.world.capabilities import WorldCapabilities
-
+from shared_core.governance.capability_snapshot import CapabilitySnapshot
+from shared_core.event.zero_copy_event_bus import ZeroCopyEventBus
+from shared_core.event_schema import PBEvent
 
 def run():
     registry = WorldRegistry()
+    event_bus = ZeroCopyEventBus()
 
     # 註冊 worlds
     registry.register(
@@ -58,6 +62,50 @@ def run():
 
     print("\n✅ World Registry v1.1 capability map test PASSED")
 
+    snapshot = registry.export_capability_snapshot()
 
+    print(snapshot)
+    print(snapshot.to_dict())
+    print("checksum:", snapshot.checksum)
+    # 🔁 再取一次 snapshot（同一個 registry 狀態）
+    snapshot2 = registry.export_capability_snapshot()
+    assert snapshot.worlds == snapshot2.worlds
+
+    from shared_core.governance.capability_snapshot_writer import CapabilitySnapshotWriter
+    from library.library_writer import LibraryWriter
+    from library.library_event import LibraryEvent
+
+    library_root = ROOT / "aisop" / "library"
+    writer = LibraryWriter(library_root)
+
+    snapshot = registry.export_capability_snapshot()
+
+    event = LibraryEvent(
+        event_id=str(uuid4()),
+        event_type="world.capability.snapshot",
+        source="governance.world_registry",
+        payload=snapshot.to_dict(),
+        ts=datetime.now(timezone.utc).isoformat(),
+        weak_label=None,
+        meta={
+            "snapshot_checksum": snapshot.checksum,
+            "schema": "capability_snapshot_v1.2",
+        },
+    )
+    writer.write_event(event)
+    print("✅ capability snapshot written to library")
+
+    governance_event = PBEvent(
+        type="system.governance.snapshot.created",
+        payload={
+            "snapshot_id": snapshot.snapshot_id,
+            "checksum": snapshot.checksum,
+            "world_count": len(snapshot.worlds),
+            "ts": snapshot.timestamp,
+        },
+        source="governance.world_registry",
+    )
+    event_bus.publish(governance_event)
+    print("📣 governance snapshot notification emitted")
 if __name__ == "__main__":
     run()

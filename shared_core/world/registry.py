@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Any
 from .world_context import WorldContext
 from .capabilities import WorldCapabilities
 from .capability_types import WorldCapability
+from shared_core.governance.capability_snapshot import CapabilitySnapshot
 
 
 class WorldRegistry:
@@ -89,3 +90,22 @@ class WorldRegistry:
             }
 
         return out
+    def export_capability_snapshot(self) -> CapabilitySnapshot:
+        """
+        Governance-level snapshot of current world capability state.
+
+        IMPORTANT:
+        - Pure transformation
+        - No side effects
+        - No library write
+        - No event emission
+        """
+
+        capability_map = self.export_capability_map()
+
+        snapshot = CapabilitySnapshot(
+            source="WorldRegistry.export_capability_snapshot",
+            worlds=capability_map,
+        )
+
+        return snapshot

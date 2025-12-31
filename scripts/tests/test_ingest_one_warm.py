@@ -8,10 +8,20 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from pandora_core.pandora_runtime import PandoraRuntime
 
-def main():
-    rt = PandoraRuntime(base_dir=".")
 
-    warm_file = r"D:\pandora_data\warm\logs_20251214_213933.jsonl"
+def main():
+    rt = PandoraRuntime(base_dir=r"D:\pandora_data")
+
+    warm_dir = Path(r"D:\pandora_data\warm")
+    files = sorted(warm_dir.glob("logs_*.jsonl"))
+
+    if not files:
+        print("[SKIP] No warm logs found, skip ingest test")
+        return
+
+    warm_file = files[-1]  # 取最新一筆
+    print(f"[TEST] ingest file = {warm_file}")
+
     n, stats = rt.replay.ingest_to_library(warm_file)
 
     print("[TEST] ingest count =", n)

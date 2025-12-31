@@ -16,10 +16,10 @@ class TradingRuntime:
     """
     plugin_name = "TradingRuntime"
     # === Plugin Capability Declaration v1.1 ===
-    required_capabilities = {
+    required_capabilities = [
         WorldCapability.EXTERNAL_TICK,
         WorldCapability.MULTI_RUNTIME,
-    }
+    ]
     def __init__(self, rt, symbol="BTC/USDT"):
         self.bus = rt.bus
         self.fast_bus = rt.fast_bus            # ★ 統一從 Runtime 取得 fast_bus

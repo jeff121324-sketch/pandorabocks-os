@@ -1,7 +1,17 @@
 class PluginBase:
     """
-    所有插件（人格、子模組、子文明）的共同介面。
-    Pandora 不知道他是交易、飯店還是別的——全部一視同仁。
+    Minimal plugin abstraction.
+
+    Optional attributes (NOT enforced):
+    - plugin_name: str
+    - required_capabilities: Iterable[str]
+    - version: str
+
+    Optional lifecycle hooks:
+    - on_install(runtime)
+    - on_load(bus)
+    - on_unload()
+    - tick()
     """
 
     def __init__(self, name):
@@ -14,3 +24,5 @@ class PluginBase:
     def tick(self):
         """每一輪 loop 呼叫一次"""
         pass
+    def __repr__(self):
+        return f"<Plugin {self.__class__.__name__}>"

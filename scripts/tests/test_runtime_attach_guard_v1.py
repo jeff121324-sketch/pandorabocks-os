@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
 from shared_core.world.registry import WorldRegistry
 from shared_core.world.world_context import WorldContext
 from shared_core.world.capabilities import WorldCapabilities
@@ -31,11 +32,20 @@ def run():
     gate = WorldCapabilityGate(registry)
     guard = RuntimeAttachGuard(gate)
 
+    # ✅ 模擬一個需要 MULTI_RUNTIME 能力的 Runtime
+    class TradingRuntime:
+        plugin_name = "TradingRuntime"
+        required_capabilities = [WorldCapability.MULTI_RUNTIME]
+
     try:
-        guard.before_attach("pandora", "TradingRuntime")
+        guard.ensure_can_attach(
+            world_id="pandora",
+            plugin_instance=TradingRuntime(),
+        )
     except PermissionError as e:
         print("[OK BLOCKED]", e)
 
 
 if __name__ == "__main__":
     run()
+

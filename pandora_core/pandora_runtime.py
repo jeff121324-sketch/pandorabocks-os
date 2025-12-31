@@ -25,6 +25,7 @@ from .module_loader import ModuleLoader
 from storage_core.storage_manager import StorageManager
 from storage_core.log_rotator import LogRotator, RotatePolicy, ArchivePolicy
 from pandora_core.replay_runtime import ReplayRuntime
+from shared_core.event_schema import PBEvent
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -84,7 +85,29 @@ class PandoraRuntime:
         )        
         # （暫時）先註冊 pandora 世界本身
         self.world_registry.register(pandora_world)
+        # =========================================================
+        # Governance World（制度世界）
+        # =========================================================
+        from shared_core.world.capabilities import WorldCapabilities
 
+        governance_world = WorldContext(
+            world_id="governance",
+            world_type="system",
+            owner="pandora-os",
+            description="Governance Runtime World"
+        )
+
+        self.world_registry.register(governance_world)
+
+        # Governance world 的能力（極小化）
+        self.world_registry.register_capabilities(
+            WorldCapabilities(
+                world_id="governance",
+                supports_hotplug=False,
+                supports_multi_runtime=False,
+                supports_external_tick=False,
+            )
+        )
         # 你之後會在這裡註冊能力（之後再做）
         # self.world_registry.register_capabilities(...)
 
@@ -96,6 +119,103 @@ class PandoraRuntime:
         # 3️⃣ 注入 Runtime Attach Guard
         self._runtime_attach_guard = RuntimeAttachGuard(
             capability_gate=self.world_capability_gate
+        )
+
+
+        # =========================================================
+        # Governance Runtime（議會 + 決策落盤）
+        # =========================================================
+        from shared_core.governance.runtime.governance_runtime import GovernanceRuntime
+        from shared_core.governance.handlers.governance_snapshot_handler import GovernanceSnapshotHandler
+        from shared_core.governance.handlers.decision_persistence_handler import DecisionPersistenceHandler
+        from shared_core.governance.parliament.parliament_engine import ParliamentEngine
+
+        # 議會引擎
+        parliament_engine = ParliamentEngine(
+            rules_path="shared_core/governance/parliament/rules.yaml"
+        )
+
+        # Snapshot → Parliament
+        snapshot_handler = GovernanceSnapshotHandler(
+            engine=parliament_engine,
+            event_bus=self.bus,   # 用正常 EventBus（治理不走 fast_bus）        
+        )
+
+        # Decision → Library
+        decision_persistence_handler = DecisionPersistenceHandler(
+            library_root=Path(base_dir) / "library"
+        )
+
+        # Governance Runtime 本體
+        self.governance_runtime = GovernanceRuntime(
+            engine=parliament_engine,
+            snapshot_handler=snapshot_handler,
+            decision_persistence_handler=decision_persistence_handler,
+        )
+        # 1️⃣ 先做 capability 檢查（制度）
+        self._runtime_attach_guard.ensure_can_attach(
+            world_id="governance",
+            plugin_instance=self.governance_runtime,
+            plugin_name="governance-runtime",
+        )
+
+        # 2️⃣ 再真正 attach（生命週期）
+        if hasattr(self.governance_runtime, "on_load"):
+            self.governance_runtime.on_load(self.bus)
+            print("[PandoraRuntime] 🏛️ GovernanceRuntime attached")
+        # =========================================================
+        # Output System（結構化輸出，給系統 / 人）
+        # =========================================================
+        from outputs.output_orchestrator import DecisionOutputOrchestrator
+        from outputs.output_dispatch_handler import OutputDispatchHandler
+        from locales.zh_TW.formatter import ZhTWFormatter
+        from outputs.debug.console_output import ConsoleOutput
+        from outputs.warm.file_output import FileOutput
+
+        output_orchestrator = DecisionOutputOrchestrator(
+            formatter=ZhTWFormatter(),   # 之後再做動態 locale
+            outputs=[
+                ConsoleOutput(),
+                FileOutput(base_dir="outputs/reports/daily"),
+            ],
+            metadata={
+                "system": "AISOP",
+                "version": "0.5",
+                "env": "prod",
+            }
+        )
+
+        output_handler = OutputDispatchHandler(output_orchestrator)
+
+        self.bus.subscribe(
+            "system.governance.decision.created",
+            output_handler.handle,
+        )
+
+        # =========================================================
+        # Narration System（給人看的「AI 自述」，完全平行）
+        # =========================================================
+        from outputs.narrators.narration_handler import NarrationHandler
+        from outputs.narrators.narrator_registry import NarratorRegistry
+        from outputs.narrators.stub_narrator import StubNarrator
+
+        # 1️⃣ 建立並初始化 Registry（一定要做）
+        narrator_registry = NarratorRegistry()
+        narrator_registry.register("stub", StubNarrator())
+        narrator_registry.register("gpt_low", StubNarrator())
+        narrator_registry.register("gpt_high", StubNarrator())
+
+
+        # 2️⃣ 建立 Handler（⚠️ 不要先 select narrator）
+        narration_handler = NarrationHandler(
+            registry=narrator_registry,
+            env="prod",
+        )
+
+        # 4️⃣ 接線（平行，不影響 Output）
+        self.bus.subscribe(
+            "system.governance.decision.created",
+            narration_handler.handle,
         )
 
         # =========================================================
@@ -119,7 +239,7 @@ class PandoraRuntime:
 
         self.gateway.register_adapter(
             "library.event",
-            LibraryEventAdapter(self.validator)
+            LibraryEventAdapter(validator=None)
         )
         print("[PandoraRuntime] 🧩 Adapter registered: library.event")
         # =========================================================
@@ -133,12 +253,17 @@ class PandoraRuntime:
 
         # ★ 全系統唯一 EventLogWriter
         self.event_log_writer = EventLogWriter(str(hot_path))
+        from shared_core.event.event_trace import EventTracer
 
+        self.event_tracer = EventTracer()
+        self.fast_bus.tracer = self.event_tracer
+        self.bus.tracer = self.event_tracer
         # ★ 所有事件（Live + Replay）都走這條
-        self.fast_bus.subscribe(
-            "market.kline",
-            lambda ev: self.event_log_writer.write(ev)
-        )
+        def _raw_event_sink(ev):
+            if isinstance(ev, PBEvent):
+                self.event_log_writer.write(ev)
+
+        self.bus.subscribe("market.kline", self.event_log_writer.write)
 
         print("[PandoraRuntime] 📝 RAW EVENT LAYER 已啟動（唯一 Writer）")
 

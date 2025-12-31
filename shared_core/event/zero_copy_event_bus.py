@@ -1,5 +1,5 @@
 # shared_core/event/zero_copy_event_bus.py
-
+from shared_core.event.event_trace import EventTrace
 class ZeroCopyEventBus:
     """
     Zero-Copy EventBus：
@@ -24,11 +24,24 @@ class ZeroCopyEventBus:
     # --------------------------------------
     # 發布事件（不複製）
     # --------------------------------------
-    def publish(self, event):
+
+    def publish(self, event, skip_log: bool = False):
+        trace = None
+        if hasattr(self, "tracer"):
+            trace = EventTrace(
+                event_type=event.type,
+                source=getattr(event, "source", "unknown"),
+            )
+
         handlers = self._subscribers.get(event.type, [])
         for h in handlers:
-            h(event)  # 直接傳 event（zero copy）
+            if trace:
+                trace.delivered_to.append(h.__name__)
+            h(event)
 
+        if trace:
+            self.tracer.record(trace)
+    
     # --------------------------------------
     # 訂閱所有事件（萬用監聽）
     # --------------------------------------

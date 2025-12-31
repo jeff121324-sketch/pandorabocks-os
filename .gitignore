@@ -32,3 +32,10 @@ config/*.local.yaml
 # Library index (generated data)
 # ======================
 library/index/*.json
+# =====================
+# Local data / drafts
+# =====================
+config/storage.yaml
+test_data/
+*.txt
+*.TXT

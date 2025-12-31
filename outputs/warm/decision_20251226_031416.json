@@ -1,0 +1,19 @@
+{
+  "meta": {
+    "system": "AISOP",
+    "version": "0.5",
+    "env": "dev",
+    "locale": "en_US"
+  },
+  "data": {
+    "title": "Market Signal Evaluation",
+    "summary": "Momentum indicators show neutral bias.",
+    "final_decision": "HOLD",
+    "confidence": 0.62,
+    "reasons": [
+      "RSI neutral",
+      "Volume stable"
+    ],
+    "notes": null
+  }
+}

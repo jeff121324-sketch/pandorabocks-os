@@ -83,7 +83,9 @@ class PerceptionGateway:
         event = self.core.run_pipeline(adapter, raw, soft=soft)
         if event is None:
             return None
-
+        # library.event 是歷史事件，不做 domain-level 驗證
+        if key == "library.event":
+            return event
         # ⭐ Gateway 仍保留最後 PBEventValidator 防線
         return self.validator.validate(event, soft=soft)
 

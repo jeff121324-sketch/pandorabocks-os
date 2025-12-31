@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "system": "AISOP",
+    "version": "0.5",
+    "env": "dev",
+    "locale": "en_US"
+  },
+  "data": {
+    "title": null,
+    "summary": null,
+    "decision": null,
+    "confidence": null,
+    "reasons": null,
+    "notes": null
+  }
+}

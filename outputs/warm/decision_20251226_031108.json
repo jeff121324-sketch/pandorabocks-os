@@ -1,0 +1,18 @@
+{
+  "meta": {
+    "system": "AISOP",
+    "version": "0.5",
+    "env": "dev"
+  },
+  "data": {
+    "標題": "Market Signal Evaluation",
+    "摘要說明": "Momentum indicators show neutral bias.",
+    "系統判斷": "HOLD",
+    "信心指數": "62.00%",
+    "判斷依據": [
+      "RSI neutral",
+      "Volume stable"
+    ],
+    "補充說明": "本結果為系統依據當前可用資訊所產生之判斷，不構成任何保證或承諾。"
+  }
+}

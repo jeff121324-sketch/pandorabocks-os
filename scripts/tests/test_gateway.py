@@ -1,4 +1,13 @@
 # test_gateway.py
+import sys
+from pathlib import Path
+from datetime import datetime, timezone
+
+# === 專案根目錄（aisop/）===
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from shared_core.perception_core.perception_gateway import PerceptionGateway
 from shared_core.pb_lang.pb_event_validator import PBEventValidator
 from trading_core.perception.market_adapter import MarketKlineAdapter
