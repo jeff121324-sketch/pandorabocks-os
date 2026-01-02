@@ -39,3 +39,9 @@ config/storage.yaml
 test_data/
 *.txt
 *.TXT
+# ======================
+# Outputs (runtime artifacts)
+# ======================
+outputs/**/*.json
+outputs/**/*.csv
+outputs/**/*.log

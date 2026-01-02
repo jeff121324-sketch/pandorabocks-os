@@ -1,6 +1,6 @@
 import time
 from datetime import datetime, timedelta, timezone
-from dispatch_runner import dispatch_daily
+from .dispatch_runner import dispatch_daily
 
 TZ_TW = timezone(timedelta(hours=8))
 

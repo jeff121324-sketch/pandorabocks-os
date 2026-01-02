@@ -222,9 +222,11 @@ class PandoraRuntime:
         # Adapters
         # =========================================================
         from trading_core.perception.market_adapter import MarketKlineAdapter
+        adapter = MarketKlineAdapter(self.validator)
+        adapter.mode = "batch"          # ⭐ A-MODE：完全跳過 Anti-Poison
         self.gateway.register_adapter(
             "market.kline",
-            MarketKlineAdapter(self.validator)
+            adapter
         )
         print("[PandoraRuntime] 🧩 Adapter registered: market.kline")
 
@@ -276,8 +278,8 @@ class PandoraRuntime:
         # =========================================================
         # Replay Runtime（正式接線）
         # =========================================================
-        self.replay = ReplayRuntime(self)
-        print("[PandoraRuntime] 🔁 ReplayRuntime attached")
+        #self.replay = ReplayRuntime(self)
+        #print("[PandoraRuntime] 🔁 ReplayRuntime attached")
 
 
         # === Library Writer（被動記憶層）===
@@ -295,7 +297,7 @@ class PandoraRuntime:
         # 只接 fast_bus（代表事件已經乾淨）
         self.fast_bus.subscribe("*", _library_sink)
         self.library_ingestor = LibraryIngestor(self.library)
-        self.replay = ReplayRuntime(self)  # ReplayRuntime 內把 ingestor 傳下去
+# ReplayRuntime 內把 ingestor 傳下去
 
         print("[PandoraRuntime] 📚 Library v1 attached (passive)")
 

@@ -6,72 +6,69 @@ from trading_core.data_provider.fetcher import MarketDataFetcher
 from trading_core.perception.market_adapter import MarketKlineAdapter
 from shared_core.perception_core.perception_gateway import PerceptionGateway
 from shared_core.world.capability_types import WorldCapability
+from trading_core.decision_pipeline.listener import on_market_kline
 
 class TradingRuntime:
     """
-    TradingRuntime v2（完全 plugin 化）
+    TradingRuntime v2（External Tick Source）
     ✔ 由 Pandora OS 自動 tick
-    ✔ 可獨立取代 / 插拔
-    ✔ 資料來源 → PB-Lang → EventBus（Gateway）
+    ✔ 主動掛載 EventBus listener
+    ✔ A 模式安全（不下單）
     """
     plugin_name = "TradingRuntime"
-    # === Plugin Capability Declaration v1.1 ===
+
     required_capabilities = [
         WorldCapability.EXTERNAL_TICK,
         WorldCapability.MULTI_RUNTIME,
     ]
+
     def __init__(self, rt, symbol="BTC/USDT"):
         self.bus = rt.bus
-        self.fast_bus = rt.fast_bus            # ★ 統一從 Runtime 取得 fast_bus
+        self.fast_bus = rt.fast_bus
         self.symbol = symbol
 
-        # ★ 交易市場資料 fetcher（你原本的功能不動）
+        # === Market Data ===
         self.fetcher = MarketDataFetcher()
 
-        # ★ 取得 PerceptionGateway（必須事先由 PandoraRuntime 設定）
+        # === Perception Gateway ===
         gateway = getattr(rt, "gateway", None)
         if gateway is None:
             raise RuntimeError("[TradingRuntime] ❌ PandoraRuntime 未設定 gateway")
 
-        # ★ 建立 TradingBridge v3（吃 runtime + gateway）
+        # === Trading Bridge（只負責事件化）===
         self.bridge = TradingBridge(rt, gateway, symbol=self.symbol)
+
+        # =====================================================
+        # 🔥 A MODE: 明確掛載 Decision Listener（關鍵）
+        # =====================================================
+        self.fast_bus.subscribe("market.kline", on_market_kline)
+
+        print("[TradingRuntime] 🔔 DecisionListener attached (A-MODE)")
 
         self._started = True
         print("[TradingRuntime] Initialized")
 
+        def debug_event_probe(event):
+            print(f"[EVENT-PROBE] got event type = {event.type}")
 
+        self.bus.subscribe("*", debug_event_probe)
+        print("[TradingRuntime] 🧪 Event probe attached")
     # =========================================================
-    # Plugin 載入後由 Pandora 呼叫
-    # =========================================================
-    def on_load(self, bus):
-        bus.subscribe("market.kline", self.on_kline)
-        print("[TradingRuntime] 🔔 已訂閱事件：market.kline")
-
-    # =========================================================
-    # TradingRuntime 的事件入口
+    # TradingRuntime 本身的市場事件（可留著 debug）
     # =========================================================
     def on_kline(self, event):
         payload = event.payload
-
-        symbol = payload.get("symbol")
-        close = payload.get("close")
-        interval = payload.get("interval")
-
-        print(f"[TradingRuntime] 📥 收到 K 線事件：{symbol} {interval} close={close}")
-
-    # =========================================================
-    # 手動呼叫（Debug 用）
-    # =========================================================
-    def run_once(self):
-        """手動觸發一次資料讀取（Debug 用）"""
-        print("[DEBUG] TradingRuntime.run_once 被呼叫")
-        self._process_once()
+        print(
+            f"[TradingRuntime] 📥 kline "
+            f"{payload.get('symbol')} "
+            f"{payload.get('interval')} "
+            f"close={payload.get('close')}"
+        )
 
     # =========================================================
-    # Pandora 自動呼叫
+    # Pandora 每秒呼叫
     # =========================================================
     def tick(self):
-        """Pandora Runtime 每秒呼叫此函式"""
         if not self._started:
             return
         self._process_once()

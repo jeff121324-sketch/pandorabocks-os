@@ -15,17 +15,18 @@ class ReplayRuntime:
     - 控制 replay 模式（正常 / 灌庫 / 壓力測試）
     - 不包含 replay 邏輯本身
     """
-
-    def __init__(self, runtime):
+    plugin_name = "ReplayRuntime"
+    required_capabilities = []
+    
+    def __init__(self, runtime, raw_root: Path):
         self.runtime = runtime
+        self.raw_root = raw_root
 
-        # ✅ 1. 只用 ReplayEngine 原生介面
         self.engine = ReplayEngine(
             bus=runtime.fast_bus,
             gateway=runtime.gateway,
         )
 
-        # ✅ 2. 若系統有 LibraryIngestor → 後注入
         if hasattr(runtime, "library_ingestor") and runtime.library_ingestor:
             self.engine.ingestor = runtime.library_ingestor
             print("[ReplayRuntime] 📚 LibraryIngestor attached")
@@ -202,3 +203,32 @@ class ReplayRuntime:
             print(f"[ReplayRuntime] 🔄 stress round {i + 1}/{rounds}")
             total += self.replay_file(path, **kwargs)
         return total
+    
+    def tick(self):
+        """
+        Pandora OS external tick entrypoint
+        一致性驗證用：只 replay 一次就結束
+        """
+        if getattr(self, "_done", False):
+            return
+
+        # ⭐ 這裡指定你要 replay 的來源（先用最簡單的）
+        path = (
+            self.raw_root
+            / "mock"
+            / "BTC"
+            / "USDT"
+            / "1m"
+            / "2026-01-01.jsonl"
+        )
+
+        print(f"[ReplayRuntime] ▶ replay_file: {path}")
+        count = self.replay_file(
+            path=path,
+            speed=0,
+            ignore_timestamp=True,
+        )
+
+        print(f"[ReplayRuntime] ✅ replay completed, events={count}")
+        self._done = True
+        print("[ReplayRuntime] 🧪 replay done, waiting for downstream listeners")

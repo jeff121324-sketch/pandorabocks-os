@@ -98,13 +98,16 @@ class TradingBridge:
                 raw["ts"] = float(row[c_ts])
     
             # Gateway（adapter + filter + auto_fix + anti_poison + enrich + validate）
-            event = self.gateway.process("market.kline", raw, soft=True)
+            ok = self.gateway.process_and_publish(
+                "market.kline",
+                raw,
+                bus=self.fast_bus,   # 或 self.bus，看你原本 publish 用哪個
+                soft=True,
+            )
 
-            if event is None:
+            if not ok:
                 continue
 
-            # 🔥 經過 fast_bus → RAW EVENT LAYER 才會啟動
-            publish(event)
             count += 1
 
         print(f"[TradingBridge] 📡 已發布 {count:,} 筆 K 線事件（Gateway Zero-Copy Path）")

@@ -123,4 +123,5 @@ class PerceptionGateway:
             return False
 
         bus.publish(event)
+        print(f"[EVENT-PUBLISH] type={event.type}")
         return True
