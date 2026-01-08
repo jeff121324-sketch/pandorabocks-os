@@ -5,10 +5,10 @@ from datetime import datetime, timedelta, timezone
 
 load_dotenv()
 TZ_TW = timezone(timedelta(hours=8))
-OWNER_WEBHOOK = os.getenv("DC_GENERAL_WEBHOOK", "").strip()
+STATUS_WEBHOOK = os.getenv("DC_STATUS_WEBHOOK", "").strip()
 
 def notify_owner_error(title: str, detail: str):
-    if not OWNER_WEBHOOK:
+    if not STATUS_WEBHOOK:
         return
 
     msg = (
@@ -18,4 +18,4 @@ def notify_owner_error(title: str, detail: str):
         f"說明：{detail}"
     )
 
-    requests.post(OWNER_WEBHOOK, json={"content": msg[:1900]}, timeout=10)
+    requests.post(STATUS_WEBHOOK, json={"content": msg[:1900]}, timeout=10)

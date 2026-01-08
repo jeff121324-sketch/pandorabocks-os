@@ -1,5 +1,5 @@
 # trading_core/data_ingestion_runtime.py
-from data_provider.raw_fetcher import RawMarketFetcher
+from trading_core.data_provider.perception.raw_fetcher import RawMarketFetcher
 from trading_core.data.raw_writer import RawMarketWriter
 
 class DataIngestionRuntime:

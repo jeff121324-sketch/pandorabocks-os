@@ -1,4 +1,14 @@
 # data_provider/raw_fetcher.py
+"""
+LEGACY / PROTOTYPE FETCHER
+
+This file was used during early perception pipeline validation.
+It is kept for reference only.
+
+⚠️ Do NOT extend this file.
+⚠️ New market fetchers must be implemented under:
+    data_provider/perception/market/
+"""
 import time
 
 class RawMarketFetcher:

@@ -5,7 +5,7 @@ Pandora OS 的啟動器，負責：
 - 掛載不同的子文明（TradingCore / AISOP / others）
 - 提供 run() 介面給 main.py 啟動
 """
-
+import os
 import inspect
 import asyncio
 import threading
@@ -164,6 +164,12 @@ class PandoraRuntime:
             self.governance_runtime.on_load(self.bus)
             print("[PandoraRuntime] 🏛️ GovernanceRuntime attached")
         # =========================================================
+        # Dispatch System（Discord / LINE / 外部通知）
+        # =========================================================
+        from outputs.dispatch.dispatch_runner import attach_dispatch
+
+        attach_dispatch(self.bus)
+        # =========================================================
         # Output System（結構化輸出，給系統 / 人）
         # =========================================================
         from outputs.output_orchestrator import DecisionOutputOrchestrator
@@ -244,6 +250,7 @@ class PandoraRuntime:
             LibraryEventAdapter(validator=None)
         )
         print("[PandoraRuntime] 🧩 Adapter registered: library.event")
+
         # =========================================================
         # Storage / RAW Event Layer（唯一 Writer）
         # =========================================================
@@ -301,6 +308,26 @@ class PandoraRuntime:
 
         print("[PandoraRuntime] 📚 Library v1 attached (passive)")
 
+    def attach_world_runtime(self, world_rt, live_provider=None):
+        """
+        Attach a live WorldRuntime to Pandora OS
+        """
+        self.world_runtime = world_rt
+        # ✅ 世界存在後，才接 perception listener
+        from trading_core.perception.kline_listener import register_kline_listener
+        register_kline_listener(self.fast_bus, world_rt)
+        # 2️⃣ 啟動 Live Market Tick Provider（🔥 關鍵）
+        if live_provider is not None:
+            live_provider.start(callback=self.fast_bus.publish)
+
+            print(
+                f"[PandoraRuntime] 🟢 LiveMarketTickProvider started "
+                f"(world={world_rt.context.world_id})"
+            )
+        print(
+            f"[PandoraRuntime] 🌍 WorldRuntime attached: "
+            f"{world_rt.context.world_id}"
+        )
     # --------------------------------------------------------------------------------------           
     # 外部 Tick 來源注入（TradingRuntime / AISOPRuntime / Functions）
     # --------------------------------------------------------------------------------------
@@ -370,6 +397,46 @@ class PandoraRuntime:
         self.plugins[name] = instance
 
         print(f"[PandoraRuntime] 🔌 Plugin instance installed: {name}")
+    # -------------------------------------------------------
+    # Hot Unplug（安全移除 Plugin）
+    # -------------------------------------------------------
+    def uninstall_plugin(self, name: str):
+        """
+        Safely uninstall a plugin at runtime.
+        - Stop receiving events
+        - Stop tick
+        - Let plugin clean up its resources
+        """
+
+        plugin = self.plugins.get(name)
+        if not plugin:
+            print(f"[PandoraRuntime] ⚠️ Plugin not found: {name}")
+            return False
+
+        print(f"[PandoraRuntime] 🧯 Uninstalling plugin: {name}")
+
+        # 1️⃣ 呼叫 plugin 自己的清理邏輯
+        if hasattr(plugin, "on_unload"):
+            try:
+                plugin.on_unload()
+            except Exception as e:
+                print(f"[PandoraRuntime] ⚠️ on_unload error ({name}): {e}")
+
+        # 2️⃣ 從 AIManager 移除（停止 tick）
+        try:
+            self.manager.unregister(plugin)
+        except Exception as e:
+            print(f"[PandoraRuntime] ⚠️ manager.unregister failed ({name}): {e}")
+
+        # 3️⃣ 從 Runtime plugin registry 移除
+        try:
+            del self.plugins[name]
+        except KeyError:
+            pass
+
+        print(f"[PandoraRuntime] 🔌 Plugin uninstalled: {name}")
+        return True
+
     # -------------------------------------------------------
     # Plugin installer（直接安裝物件版 plugin）
     # -------------------------------------------------------
@@ -559,10 +626,76 @@ class PandoraRuntime:
         # 交給 scheduler（內部 sleep 30 分鐘）
         await run_audit_loop(auditor)
 
-    # -------------------------------------------------------
-    # OS 主循環（呼吸節奏）
-    # -------------------------------------------------------
+
     def run_forever(self):
         print("[PandoraRuntime] ♾ Pandora OS running...")
+
+        # ---------------------------------------------------
+        # 🧪 Post-Boot Hook（只執行一次）
+        # ---------------------------------------------------
+        if not hasattr(self, "_post_boot_done"):
+            from shared_core.event_schema import PBEvent
+
+            TEST_MODE = os.getenv("AISOP_TEST_MODE") == "1"
+
+            # ---------------------------------------------------
+            # 1️⃣ （測試用）健康 warning / error（僅 TEST_MODE）
+            # ---------------------------------------------------
+            if TEST_MODE:
+                # 健康 warning 測試
+                test_event = PBEvent(
+                    type="world.health.warning",
+                    payload={
+                        "world_id": "crypto.btc.spot",
+                        "reason": "manual_test",
+                        "interval": "15m",
+                    },
+                    source="pandora_runtime",
+                    priority=2,
+                    tags=["health", "test"],
+                )
+
+                print("🧪 Injecting manual health warning test (post-boot)")
+                self.fast_bus.publish(test_event)
+
+                # 健康 ERROR 測試
+                error_event = PBEvent(
+                    type="world.health.error",
+                    payload={
+                        "world_id": "crypto.btc.spot",
+                        "reason": "manual_error_test",
+                        "detail": "Injected error for dispatch test",
+                    },
+                    source="pandora_runtime",
+                    priority=0,
+                    tags=["health", "error", "test"],
+                )
+
+                print("🚨 Injecting manual health ERROR test (post-boot)")
+                self.bus.publish(error_event)
+
+            # ---------------------------------------------------
+            # 2️⃣ ✅ 正式啟動完成事件（永遠都要送）
+            # ---------------------------------------------------
+            startup_event = PBEvent(
+                type="system.startup",
+                payload={
+                    "status": "ok",
+                   "runtime": "pandora",
+                },
+                source="pandora_runtime",
+                priority=1,
+                tags=["system", "startup"],
+            )
+
+            self.bus.publish(startup_event)
+
+            self._post_boot_done = True
+
+        # ---------------------------------------------------
+        # OS 主循環
+        # ---------------------------------------------------
         while True:
             self.tick()
+
+

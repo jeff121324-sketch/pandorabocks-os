@@ -170,6 +170,7 @@ def test_full_system():
 
     except Exception as e:
         fail("Full System 整合測試失敗", e)
+        
 
 # --------------------------------
 # 📌 Main

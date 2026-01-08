@@ -2,11 +2,11 @@
 
 from pandora_core.event_bus import EventBus
 from trading_core.trading_bridge import TradingBridge
-from trading_core.data_provider.fetcher import MarketDataFetcher
+from trading_core.data_provider.b_layer.fetcher import MarketDataFetcher
 from trading_core.perception.market_adapter import MarketKlineAdapter
 from shared_core.perception_core.perception_gateway import PerceptionGateway
 from shared_core.world.capability_types import WorldCapability
-from trading_core.decision_pipeline.listener import on_market_kline
+from trading_core.decision_pipeline.listener import make_on_market_kline
 
 class TradingRuntime:
     """
@@ -41,7 +41,7 @@ class TradingRuntime:
         # =====================================================
         # 🔥 A MODE: 明確掛載 Decision Listener（關鍵）
         # =====================================================
-        self.fast_bus.subscribe("market.kline", on_market_kline)
+        self.fast_bus.subscribe("market.kline", make_on_market_kline)
 
         print("[TradingRuntime] 🔔 DecisionListener attached (A-MODE)")
 
@@ -64,26 +64,59 @@ class TradingRuntime:
             f"{payload.get('interval')} "
             f"close={payload.get('close')}"
         )
+    # =========================================================
+    # 🚨 Trading → Health Error 上報出口（唯一）
+    # =========================================================
+    def report_health_error(self, reason: str, detail: str):
+        from shared_core.event_schema import PBEvent
 
+        event = PBEvent(
+            type="world.health.error",
+            payload={
+                "world_id": "crypto.btc.spot",
+                "reason": reason,
+                "detail": detail,
+            },
+            source="trading_runtime",
+            priority=0,
+            tags=["health", "error", "trading"],
+        )
+
+        self.bus.publish(event)
     # =========================================================
     # Pandora 每秒呼叫
     # =========================================================
     def tick(self):
         if not self._started:
             return
-        self._process_once()
+
+        try:
+            self._process_once()
+
+        except Exception as e:
+            # 🚨 任何 TradingRuntime 無法自行處理的錯誤
+            self.report_health_error(
+                reason="trading_runtime_exception",
+                detail=repr(e),
+            )
+            raise  # ⛔ 讓 Pandora OS 決定是否 Freeze
 
     # =========================================================
     # 📌 核心處理流程
     # =========================================================
     def _process_once(self):
+        
         print("[TradingRuntime] 📈 讀取市場資料中…")
 
         df = self.fetcher.load()
 
         if df is None or len(df) == 0:
-            print("[TradingRuntime] ⚠ 無資料，略過。")
+            self.report_health_error(
+            reason="market_data_empty",
+            detail="MarketDataFetcher returned empty dataframe",
+        )
             return
+        
 
         print(f"[TradingRuntime] 📘 已取得 {len(df)} 筆資料，開始事件化…")
 

@@ -16,7 +16,12 @@ class PluginBase:
 
     def __init__(self, name):
         self.name = name
+        self._active = True 
 
+    def on_unload(self):
+        """Hot Unplug hook（可選）"""
+        self._active = False
+        
     def on_event(self, event_type, data):
         """事件回應"""
         pass

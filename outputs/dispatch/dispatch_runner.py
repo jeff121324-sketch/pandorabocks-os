@@ -2,10 +2,9 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 from .formatter.zh_TW import format_daily_report_zh
-from .channels.discord import send_discord_message
+from .channels.discord import send_report_message
 from .dispatch_log import log_dispatch
-from .startup_notify import notify_startup_ok, notify_startup_error
-
+from .startup_notify import notify_startup_ok
 from dotenv import load_dotenv
 import os
 import requests
@@ -90,7 +89,7 @@ def dispatch_daily(date_str: str):
 
     try:
         message = format_daily_report_zh(report_file)
-        send_discord_message(message)
+        send_report_message(message)
         log_dispatch("daily", date_str, "discord", "success")
         mark_sent_today()
 
@@ -124,9 +123,43 @@ def dispatch_check_once():
     就送 daily report
     """
     now = datetime.now(TZ_TW)
+    today = now.strftime("%Y-%m-%d")
 
     if now.hour >= 9 and not has_sent_today():
-        date = get_latest_daily_date()
-        dispatch_daily(date)
+        report_file = REPORT_DIR / f"daily_report_{today}.json"
+        if not report_file.exists():
+            raise RuntimeError(f"Today's daily report not generated yet: {today}")
 
+        dispatch_daily(today)
+
+# ==================================================
+# Attach dispatch system to EventBus (OS-level)
+# ==================================================
+def attach_dispatch(bus):
+    from outputs.dispatch.health import dispatch_health_warning
+    from outputs.dispatch.owner_notify import notify_owner_error
+    from outputs.dispatch.startup_notify import on_startup_event
+    from outputs.dispatch.health import dispatch_health_warning, dispatch_health_error
+
+    # World health → Discord #status
+    bus.subscribe(
+        "world.health.warning",
+        dispatch_health_warning
+    )
+
+    bus.subscribe("world.health.error", dispatch_health_error)
+
+    # System startup → Discord
+    bus.subscribe(
+        "system.startup",
+        on_startup_event
+    )
+
+    # Owner critical notify（如果你有）
+    bus.subscribe(
+        "owner.notify",
+        notify_owner_error
+    )
+
+    print("[Dispatch] 📣 Dispatch system attached")
 

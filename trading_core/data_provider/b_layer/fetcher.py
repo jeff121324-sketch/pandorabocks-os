@@ -1,4 +1,13 @@
 # trading_core/data_provider/fetcher.py
+"""
+PERCEPTION DATA ONLY
+
+This module produces raw market facts.
+- No indicators
+- No aggregation
+- No strategy logic
+- Must never be used for training or optimization
+"""
 import pandas as pd
 
 class MarketDataFetcher:

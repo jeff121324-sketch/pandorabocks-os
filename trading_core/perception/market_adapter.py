@@ -123,41 +123,54 @@ class MarketKlineAdapter(PerceptionAdapter):
     # 【3】Anti-Poison：高頻垃圾事件防護
     # -------------------------------------------------------
     def anti_poison(self, raw: dict):
-        now_ts = raw.get("ts") or time.time()
+        # 系統到達時間（Anti-Poison 專用）
+        arrival_ts = time.time()
 
         # --------------------------------------------------------
-        # ⭐ Batch Mode（壓力測試 / 批次資料）→ 完全跳過 Anti-Poison
+        # ⭐ Batch / Bootstrap：允許合法批量湧入
         # --------------------------------------------------------
-        if self.mode == "batch":
-            return raw   # ❗ 不更新 last_ts / last_price，避免污染 real-time 模式
+        if self.mode in ("bootstrap", "batch"):
+            # 只做「重複事件」防護，避免交易所 API 問題
+            if self.last_price is not None and self.last_vol is not None:
+                if raw["close"] == self.last_price and raw["volume"] == self.last_vol:
+                    print("[Adapter] 🛡️ Anti-Poison：重複事件 → 拒收")
+                    return None
 
-        # --------------------------------------------------------
-        # ⭐ Real-Time 模式：高頻攻擊防護
-        # --------------------------------------------------------
-
-        # 第一次事件：直接接受，並更新狀態
-        if self.last_ts == 0:
-            self.last_ts = now_ts
+            # 更新狀態（但不做 arrival rate 檢查）
             self.last_price = raw["close"]
             self.last_vol = raw["volume"]
             return raw
 
-        # 1) 避免極端高頻（市場毒化攻擊）
-        if now_ts - self.last_ts < 0.10:   # 100ms 防護比較合理
-            print("[Adapter] 🛡️ Anti-Poison：事件太密集 → 拒收")
+        # --------------------------------------------------------
+        # ⭐ Real-Time 模式：嚴格防護
+        # --------------------------------------------------------
+        min_interval = 0.10  # 100ms
+
+        if self.last_ts == 0:
+            self.last_ts = arrival_ts
+            self.last_price = raw["close"]
+            self.last_vol = raw["volume"]
+            return raw
+
+        # 1) 到達密度防護（Anti-Flood）
+        if arrival_ts - self.last_ts < min_interval:
+            print(f"[Adapter] 🛡️ Anti-Poison：到達過密 → 拒收 ({arrival_ts - self.last_ts:.6f}s)")
             return None
 
-        # 2) 避免重複事件（舊交易所 API 常見問題）
+        # 2) 重複事件防護
         if raw["close"] == self.last_price and raw["volume"] == self.last_vol:
             print("[Adapter] 🛡️ Anti-Poison：重複事件 → 拒收")
             return None
 
         # 更新狀態
-        self.last_ts = now_ts
+        self.last_ts = arrival_ts
         self.last_price = raw["close"]
         self.last_vol = raw["volume"]
 
         return raw
+
+
+
 
 
     # -------------------------------------------------------

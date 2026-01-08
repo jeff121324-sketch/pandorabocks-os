@@ -1,0 +1,35 @@
+world_id: crypto.btc.spot
+domain: trading
+
+mode:
+  realtime: true
+  replay: true
+
+market:
+  exchange: binance
+  symbol: BTC/USDT
+  asset_type: spot
+  intervals: [15m, 1h, 4h]
+
+data:
+  bootstrap:
+    backfill_max_bars: 20000
+  storage:
+    csv_root: trading_core/data/raw/binance_csv
+
+pipeline:
+  perception: true
+  intermediate_language: trading
+  compute_layer: null
+  parliament: false
+  execution: false
+  reporting: false
+
+personality:
+  enabled:
+    - historian
+    - observer
+
+permission:
+  allow_trade: false
+  allow_external_tick: false

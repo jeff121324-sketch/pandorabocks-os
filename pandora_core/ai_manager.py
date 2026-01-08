@@ -14,6 +14,13 @@ class AIManager:
     def register(self, plugin):
         self.plugins.append(plugin)
         print(f"[AIManager] 🔌 Registered plugin: {plugin.__class__.__name__}")
+    def unregister(self, plugin):
+        try:
+            self.plugins.remove(plugin)
+            print(f"[AIManager] 🔻 Plugin unregistered: {plugin.__class__.__name__}")
+
+        except ValueError:
+            print("[AIManager] ⚠️ Plugin not found during unregister")
 
     def tick_all(self):
         for p in self.plugins:

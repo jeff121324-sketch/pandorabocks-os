@@ -34,13 +34,19 @@ add_path(ROOT / "aisop_core")
 
 print("[PathLoader] 🔧 系統模組路徑載入完成")
 
-from pandora_core.pandora_runtime import PandoraRuntime
-from trading_core.trading_runtime import TradingRuntime
-from trading_core.data_ingestion_runtime import DataIngestionRuntime
 import threading
 import time
+from pandora_core.pandora_runtime import PandoraRuntime
 from pandora_core.health_check import HealthCheckRegistry
-from outputs.dispatch.health import dispatch_daily_health
+from pandora_core.plugins.safe_plugin import SafePlugin
+from pandora_core.plugins.learning_plugin import LearningPlugin
+from pandora_core.plugins.reflection_plugin import ReflectionPlugin
+from pandora_core.plugins.output_plugin import OutputPlugin
+
+
+from trading_core.trading_runtime import TradingRuntime
+from trading_core.data_ingestion_runtime import DataIngestionRuntime
+from outputs.dispatch.health import dispatch_health_warning
 from outputs.dispatch.dispatch_runner import dispatch_check_once
 from outputs.dispatch.startup_notify import (
     notify_startup_ok,
@@ -89,7 +95,7 @@ def main():
     # Dispatch Daily 履約健康
     health_registry.register(
         "dispatch_daily",
-        dispatch_daily_health
+        dispatch_health_warning
     )
     # ---------------------------------------------------
     # Dispatch Background Task（報表發送）
@@ -128,13 +134,34 @@ def main():
     # === Replay（你剛測成功的）===
     from pandora_core.replay_runtime import ReplayRuntime
 
+    world_ctx = rt.world_registry.get("pandora")
+
     replay_rt = ReplayRuntime(
         rt,
-        raw_root=Path("trading_core/data/raw")
+        raw_root=Path("trading_core/data/raw"),
+        world_context=world_ctx,
     )
     rt.register_external_tick_source(replay_rt)
 
     print("[Main] ▶ ReplayRuntime attached")
+
+    def hot_unplug_test(rt):
+        time.sleep(10)
+        rt.load_plugin_instance("safe", SafePlugin("safe"))
+        time.sleep(10)
+        rt.uninstall_plugin("safe")
+
+    threading.Thread(
+        target=hot_unplug_test,
+        args=(rt,),
+        daemon=True,
+        name="HotUnplugTest",
+    ).start()
+    # ---------------------------------------------------
+    # 通用可熱插拔 Plugin（learning / reflection / outputs）
+    # ---------------------------------------------------
+    rt.load_plugin_instance("learning", LearningPlugin())
+    rt.load_plugin_instance("reflection", ReflectionPlugin())
     # ---------------------------------------------------
     # 啟動 OS
     # ---------------------------------------------------

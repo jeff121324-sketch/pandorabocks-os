@@ -6,11 +6,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 TZ_TW = timezone(timedelta(hours=8))
-OWNER_WEBHOOK = os.getenv("DC_GENERAL_WEBHOOK", "").strip()
+STATUS_WEBHOOK = os.getenv("DC_STATUS_WEBHOOK", "").strip()
 
 
 def notify_startup_ok():
-    if not OWNER_WEBHOOK:
+    if not STATUS_WEBHOOK:
         return
 
     msg = (
@@ -23,7 +23,7 @@ def notify_startup_ok():
 
     try:
         requests.post(
-            OWNER_WEBHOOK,
+            STATUS_WEBHOOK,
             json={"content": msg[:1900]},
             timeout=10
         )
@@ -32,7 +32,7 @@ def notify_startup_ok():
 
 
 def notify_startup_error(err: Exception):
-    if not OWNER_WEBHOOK:
+    if not STATUS_WEBHOOK:
         return
 
     msg = (
@@ -44,9 +44,12 @@ def notify_startup_error(err: Exception):
 
     try:
         requests.post(
-            OWNER_WEBHOOK,
+            STATUS_WEBHOOK,
             json={"content": msg[:1900]},
             timeout=10
         )
     except Exception:
         pass
+    
+def on_startup_event(event):
+    notify_startup_ok()

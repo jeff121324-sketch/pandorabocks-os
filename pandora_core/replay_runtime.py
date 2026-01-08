@@ -18,14 +18,17 @@ class ReplayRuntime:
     plugin_name = "ReplayRuntime"
     required_capabilities = []
     
-    def __init__(self, runtime, raw_root: Path):
+    def __init__(self, runtime, raw_root: Path, world_context):
         self.runtime = runtime
         self.raw_root = raw_root
+        self.world_context = world_context
 
         self.engine = ReplayEngine(
             bus=runtime.fast_bus,
             gateway=runtime.gateway,
         )
+        self._replay_files = self._collect_replay_files()
+        self._done = False
 
         if hasattr(runtime, "library_ingestor") and runtime.library_ingestor:
             self.engine.ingestor = runtime.library_ingestor
@@ -204,31 +207,107 @@ class ReplayRuntime:
             total += self.replay_file(path, **kwargs)
         return total
     
+    def _collect_replay_files(self):
+        """
+        從 raw_root 底下收集所有可 replay 的檔案
+        支援 csv / jsonl
+        """
+        raw_root = Path(self.raw_root)
+
+        if not raw_root.exists():
+            return []
+
+        files = []
+        for ext in ("*.jsonl", "*.csv"):
+            files.extend(raw_root.rglob(ext))
+
+        files.sort()
+        return files
+
+    def replay_csv_as_events(self, path: Path):
+        """
+        將 CSV Kline 資料轉成 Event，再送進 ReplayEngine
+        v1：最小轉譯，只支援 Binance OHLCV
+        """
+        import csv
+        from shared_core.event_schema import PBEvent
+
+        count = 0
+
+        try:
+            interval = path.stem.split("_")[-1]
+    
+            with open(path, newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+
+                for row in reader:
+                    raw_ts = (
+                        row.get("kline_open_ts")
+                        or row.get("open_time")
+                        or row.get("timestamp")
+                    )
+
+                    event = PBEvent(
+                        source="replay.csv",
+                        type="market.kline",
+                        payload={
+                            "world_id": self.world_context.world_id,
+                            "symbol": self.world_context.world_id,
+                            "interval": interval,
+                            "timestamp": int(float(raw_ts)), 
+                            "open": float(row["open"]),
+                            "high": float(row["high"]),
+                            "low": float(row["low"]),
+                            "close": float(row["close"]),
+                            "volume": float(row["volume"]),
+                        },
+                    )
+
+                    self.engine.bus.publish(event)
+                    count += 1
+
+        except Exception as e:
+            print(f"[ReplayRuntime] ❌ CSV replay error @ {path}: {e}")
+            return 0   # ⬅️ 關鍵：**這裡一定要 return**
+
+        return count
+
     def tick(self):
         """
-        Pandora OS external tick entrypoint
-        一致性驗證用：只 replay 一次就結束
+        Pandora OS external tick entrypoint (World Runtime v1)
         """
-        if getattr(self, "_done", False):
+        if self._done:
             return
 
-        # ⭐ 這裡指定你要 replay 的來源（先用最簡單的）
-        path = (
-            self.raw_root
-            / "mock"
-            / "BTC"
-            / "USDT"
-            / "1m"
-            / "2026-01-01.jsonl"
-        )
+        count = 0
 
+        if not self._replay_files:
+            print(f"[ReplayRuntime] ⚠ no replay files under: {self.raw_root}")
+            self._done = True
+            return
+
+        path = self._replay_files.pop(0)
         print(f"[ReplayRuntime] ▶ replay_file: {path}")
-        count = self.replay_file(
-            path=path,
-            speed=0,
-            ignore_timestamp=True,
-        )
 
-        print(f"[ReplayRuntime] ✅ replay completed, events={count}")
+        try:
+            if path.suffix.lower() == ".csv":
+                print(f"[ReplayRuntime] ⚠ CSV detected, convert before replay: {path}")
+                count = self.replay_csv_as_events(path)
+            else:
+                count = self.replay_file(
+                    path=path,
+                    speed=0,
+                    ignore_timestamp=True,
+                )
+
+            print(f"[ReplayRuntime] ✅ replay completed, events={count}")
+
+        except Exception as e:
+            print(f"[ReplayRuntime] ❌ replay failed: {e}")
+            count = 0   # ⬅️ 保證 count 一定存在
+
         self._done = True
         print("[ReplayRuntime] 🧪 replay done, waiting for downstream listeners")
+
+
+

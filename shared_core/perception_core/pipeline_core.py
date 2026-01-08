@@ -18,6 +18,7 @@ class PerceptionPipelineCore:
 
     def __init__(self, validator=None):
         self.validator = validator
+        self._last_ingest_ts = 0.0
 
     # --------------------------------------------------
     # (1) filter
@@ -36,8 +37,14 @@ class PerceptionPipelineCore:
     # --------------------------------------------------
     # (3) anti_poison
     # --------------------------------------------------
-    def anti_poison(self, raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """子類可覆寫"""
+    def anti_poison(self, raw):
+        now = time.time()
+
+        # 絕對底線：防止毫秒級無限灌入（系統異常）
+        if now - self._last_ingest_ts < 0.001:  # 1ms
+            return None
+
+        self._last_ingest_ts = now
         return raw
 
     # --------------------------------------------------
@@ -79,3 +86,21 @@ class PerceptionPipelineCore:
         if self.validator:
             return self.validator.validate(event, soft=True)
         return event
+    # --------------------------------------------------
+    # Gateway 專用入口（Adapter × Raw）
+    # --------------------------------------------------
+    def run_pipeline(self, adapter, raw, *, soft: bool = False):
+        """
+        統一由 Gateway 呼叫的 pipeline 入口
+
+        adapter: Domain Adapter（如 MarketKlineAdapter）
+        raw:     原始 dict
+        """
+        # 將 adapter 的 domain 行為「暫時掛載」到 core
+        self.filter = adapter.filter
+        self.auto_fix = adapter.auto_fix
+        self.anti_poison = adapter.anti_poison
+        self.enrich = adapter.enrich
+        self.make_event = adapter.make_event
+
+        return self.to_event(raw)

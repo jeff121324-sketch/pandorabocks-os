@@ -2,10 +2,17 @@
 
 def run_decision_pipeline(event):
     """
-    A 模式 v0
-    - 只根據 market.kline 做最簡單決策
-    - 不讀 state
-    - 不碰 risk
+    A-MODE Decision Pipeline (A+B schema, v1)
+
+    A 層（core）：
+    - 100% deterministic
+    - 僅依賴 event.payload
+    - 可被 replay / hash / snapshot
+
+    B 層（extension）：
+    - 目前為結構占位
+    - 不使用 random / time
+    - 不影響一致性驗證
     """
 
     payload = event.payload
@@ -14,14 +21,24 @@ def run_decision_pipeline(event):
     if close is None:
         return None
 
-    # 🔹 A 模式：極簡決策（只是為了驗證管線）
     decision = {
-        "action": "HOLD",
-        "confidence": 0.5,
-        "reason": "A-mode bootstrap",
-        "price": close,
-        "symbol": payload.get("symbol"),
-        "interval": payload.get("interval"),
+        # ==========================
+        # A 層：Deterministic Core
+        # ==========================
+        "core": {
+            "action": "HOLD",
+            "price": close,
+            "symbol": payload.get("symbol"),
+            "interval": payload.get("interval"),
+        },
+
+        # ==========================
+        # B 層：Extension（占位）
+        # ==========================
+        "extension": {
+            "mode": "bootstrap",
+            "note": "A-mode deterministic core (no exploration)"
+        }
     }
 
     return decision
