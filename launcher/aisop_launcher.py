@@ -1,5 +1,7 @@
 # launcher/aisop_launcher.py
-
+import threading
+import time
+import os
 import sys
 from pathlib import Path
 # === 專案根目錄（aisop/） ===
@@ -18,9 +20,11 @@ from shared_core.world.world_runtime import WorldRuntime
 from trading_core.data_provider.perception.market.runner.live_market_tick_provider import (
     LiveMarketTickProvider
 )
-
+from outputs.dispatch.dispatch_runner import attach_dispatch
 
 def run_world(profile_path: str):
+    ENGINEERING_MODE = bool(int(os.environ.get("AISOP_ENGINEERING", "0")))
+
     # -------------------------------------------------
     # Resolve base path
     # -------------------------------------------------
@@ -32,26 +36,8 @@ def run_world(profile_path: str):
     profile = WorldProfile.load(Path(profile_path))
     print(f"[Launcher] 📜 Loaded WorldProfile: {profile.world_id}")
     rt = PandoraRuntime(base)
-
-    # -------------------------------------------------
-    #  Init Pandora Runtime (但先不 run)
-    # -------------------------------------------------
-    from shared_core.event_schema import PBEvent
-
-    test_event = PBEvent(
-        type="world.health.warning",
-        payload={
-            "reason": "manual_test",
-            "interval": "15m",
-        },
-        source="launcher",
-        priority=2,
-        tags=["health", "test"],
-    )
-
-    print("🧪 Injecting manual health warning test")
-    rt.fast_bus.publish(test_event)
-
+    # ✅【關鍵】先把 Dispatch 接上
+    attach_dispatch(rt.fast_bus)
 
     # -------------------------------------------------
     # Init World Registry
@@ -124,9 +110,54 @@ def run_world(profile_path: str):
     from trading_core.data_provider.perception.market.runner.start_market_system import main as start_market_system
 
     print("[Launcher] 🚀 Starting market system bootstrap")
+
+    intervals = profile.market.get("intervals", [])
+
+    if not intervals:
+        raise RuntimeError("❌ No market intervals defined in WorldProfile")
+
+
+    print("[Launcher] 🧭 Bootstrapping market intervals")
+
+    # ⭐ 把 intervals 整包交給 market system
+    os.environ["AISOP_MARKET_SYMBOL"] = profile.market["symbol"]
+    os.environ["AISOP_MARKET_INTERVALS"] = ",".join(
+        profile.market.get("intervals", [])
+    )
     start_market_system()
-    
-    rt.run_forever()
+    # -------------------------------------------------
+    # Start Live Market Watch (AFTER history ready)
+    # -------------------------------------------------
+    if profile.market and profile.market.get("enable_live", False):
+        print("[Launcher] ⚡ Starting live market watch")
+
+        from trading_core.data_provider.perception.market.live.exchanges.binance_ws import (
+            BinanceWSFeed,
+        )
+
+        intervals = profile.market.get("intervals", [])
+
+        for interval in intervals:
+            live_feed = BinanceWSFeed(
+                symbol=profile.market["symbol"],
+                interval=interval,
+                provider=live_provider,
+            )
+            live_feed.start()
+
+    if ENGINEERING_MODE:
+        print("[Launcher] 🧪 Engineering mode active, will force-exit in 10s")
+
+        def _force_exit():
+            time.sleep(10)
+            print("[Launcher] 🧪 Engineering timeout reached, exiting")
+            os._exit(0)   # 工程模式專用，直接結束 process
+
+        threading.Thread(target=_force_exit, daemon=True).start()
+        rt.run_forever()
+    else:
+        rt.run_forever()
+
 
 def main():
     # -------------------------------------------------

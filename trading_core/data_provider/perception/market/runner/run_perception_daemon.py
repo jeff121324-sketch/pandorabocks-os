@@ -1,4 +1,5 @@
 import sys
+import os
 import time
 from pathlib import Path
 from datetime import datetime
@@ -76,28 +77,106 @@ def normalize_kline(raw: dict) -> dict:
 
 
 def main():
+
+    # =====================================================
+    # ⭐ 1. Market Context（由 Launcher 傳入）
+    # =====================================================
+    symbol = os.getenv("AISOP_MARKET_SYMBOL", "BTC/USDT")
+
+    intervals = os.getenv("AISOP_MARKET_INTERVALS", "15m").split(",")
+    intervals = [i.strip() for i in intervals if i.strip()]
+
+    if not intervals:
+        raise RuntimeError("❌ No market intervals provided")
+
+    # =====================================================
+    # ⭐ 2. Core Components（共用）
+    # =====================================================
     fetcher = BinanceRawFetcher()
     gateway = build_market_perception_gateway(mode="bootstrap")
     bus = ZeroCopyEventBus()
     csv_writer = MarketCSVWriter(root="trading_core/data/raw/binance_csv")
 
+    # 每個 interval 各自計時
+    last_run = {interval: 0 for interval in intervals}
 
-    last_run = {k: 0 for k in INTERVAL_SECONDS}
+    print(f"🟢 Market Perception Daemon started")
+    print(f"📊 Symbol={symbol} Intervals={intervals}")
 
-    print("🟢 Market Perception Daemon started")
+    # =====================================================
+    # ⭐ 3. Risk Snapshot Runners（每 interval 一個）
+    # =====================================================
+    from trading_core.data_provider.perception.market.runner.run_risk_snapshot import (
+        RiskSnapshotRunner,
+    )
+
+    risk_runners = []
+
+    for interval in intervals:
+        runner = RiskSnapshotRunner(
+            bus=bus,
+            symbol=symbol,
+            interval=interval,
+            window=120,
+        )
+        bus.subscribe("market.kline", runner.on_kline)
+        risk_runners.append(runner)
+
+    # =====================================================
+    # ⭐ 4. Risk CSV Writers（每 interval 一個）
+    # =====================================================
+    from trading_core.analysis.risk.risk_csv_writer import RiskCSVWriter
+
+    risk_csv_writers = {}
+
+    for interval in intervals:
+        writer = RiskCSVWriter(
+            path=f"trading_core/data/raw/analysis/risk/BTC_USDT_{interval}_risk.csv"
+        )
+        bus.subscribe("risk.snapshot", writer.on_risk_snapshot)
+        risk_csv_writers[interval] = writer
+
+    # =====================================================
+    # ⭐ 5. Indicator CSV Writers（每 interval 一個）
+    # =====================================================
+    from trading_core.analysis.indicators.indicator_csv_writer import (
+        IndicatorCSVWriter,
+    )
+
+    indicator_csv_writers = {}
+
+    for interval in intervals:
+        writer = IndicatorCSVWriter(
+            path=f"trading_core/data/raw/analysis/indicators/BTC_USDT_{interval}_indicators.csv"
+        )
+        bus.subscribe("indicator.snapshot", writer.on_indicator_snapshot)
+        indicator_csv_writers[interval] = writer
+
+    # =====================================================
+    # ⭐ 6. Main Loop（多 interval 同步運作）
+    # =====================================================
+    print("🚀 Market system running")
 
     while True:
         now = time.time()
 
-        for interval, seconds in INTERVAL_SECONDS.items():
+        for interval in intervals:
+            seconds = INTERVAL_SECONDS.get(interval)
+            if seconds is None:
+                continue
+
             if now - last_run[interval] < seconds:
                 continue
 
             print(f"[{datetime.now().isoformat()}] ▶ Fetch {interval}")
 
-            raws = fetcher.fetch("BTC/USDT", interval)
-            csv_writer.write(raws)
+            # === Fetch market data ===
+            raws = fetcher.fetch(symbol, interval)
 
+            # === Write CSV ===
+            csv_writer.write(raws, symbol=symbol, interval=interval)
+
+            # === Publish events ===
             for raw in raws:
                 gateway.process_and_publish(
                     key="market.kline",
@@ -106,11 +185,11 @@ def main():
                     soft=False,
                 )
 
-
             last_run[interval] = now
             print(f"[{datetime.now().isoformat()}] ✅ Done {interval}")
 
         time.sleep(1)
+
 
 
 

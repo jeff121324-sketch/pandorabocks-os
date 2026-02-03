@@ -24,3 +24,10 @@ class LearningRequestHandler:
         snapshot: PersonaTrustSnapshot,
     ) -> LearningDecision:
         return self.policy.evaluate(request, snapshot)
+
+class PersonaTrustSnapshot:
+    def __init__(self):
+        self.trust = {}
+
+    def get_trust(self, persona_name: str) -> float:
+        return 1.0  # v0：全部人格等權

@@ -78,6 +78,26 @@ class PBEventValidator:
 
         # ⭐ 新增：文字事件型別驗證器
         self.type_validators["text.input"] = self._validate_text_input
+        # === Persona / Governance Signals ===
+        self.type_validators["persona.signal.trade"] = self._validate_persona_signal_trade
+
+        # === Governance Decisions（🔥缺的就是這個🔥）===
+        self.type_validators["system.governance.decision.created"] = (
+            self._validate_governance_decision_created
+        )
+
+    def _validate_governance_decision_created(self, event: PBEvent) -> None:
+        p = event.payload
+
+        if "agenda_id" not in p:
+            raise ValueError("system.governance.decision.created 缺少 agenda_id")
+
+        if "proposal_id" not in p:
+            raise ValueError("system.governance.decision.created 缺少 proposal_id")
+
+        if "result" not in p:
+            raise ValueError("system.governance.decision.created 缺少 result")
+
     # ------------------------------
     # 各事件型別的細部檢查
     # ------------------------------
@@ -159,3 +179,15 @@ class PBEventValidator:
 
         if not isinstance(p["text"], str) or not p["text"].strip():
             raise ValueError("text.input.text 必須是非空字串")
+        
+    def _validate_persona_signal_trade(self, event: PBEvent) -> None:
+        p = event.payload
+
+        if "source" not in p:
+            raise ValueError("persona.signal.trade 缺少欄位：source")
+
+        if "target_persona" not in p:
+            raise ValueError("persona.signal.trade 缺少欄位：target_persona")
+
+        if "signal" not in p or not isinstance(p["signal"], dict):
+            raise ValueError("persona.signal.trade.signal 必須是 dict")

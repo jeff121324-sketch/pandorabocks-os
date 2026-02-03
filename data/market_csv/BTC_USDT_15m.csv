@@ -1,3 +1,0 @@
-source,market,symbol,interval,kline_open_ts,kline_close_ts,fetch_ts,open,high,low,close,volume
-binance,crypto,BTC/USDT,15m,1767445200.0,1767446100.0,1767446171.8745153,90039.12,90039.12,89920.01,89922.25,51.32761
-binance,crypto,BTC/USDT,15m,1767446100.0,1767447000.0,1767446171.8745153,89922.26,90013.54,89922.25,90011.12,16.5581

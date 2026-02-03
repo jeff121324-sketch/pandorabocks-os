@@ -129,16 +129,16 @@ class LiveMarketTickProvider:
                 warn_event = PBEvent(
                     type="world.health.warning",
                     payload={
+                        "world_id": self.world_id,
+                        "mode": "live",
                         "reason": "kline_gap_detected",
                         "symbol": symbol,
                         "interval": interval,
                         "last_open_time": last_ts,
                         "now": now_ms,
                     },
-                    meta={
-                        "world_id": self.world_id,
-                        "mode": "live",
-                    },
+                    source="live_market_tick_provider",
+                    tags=["health", "warning", "kline_gap"],
                 )
                 self._callback(warn_event)
 

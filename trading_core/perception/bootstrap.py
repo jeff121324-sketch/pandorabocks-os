@@ -8,6 +8,8 @@ def build_market_perception_gateway(mode="realtime"):
     """
     建立市場感知層入口（Singleton 概念）
     """
+    # === 關鍵一：strict 規則隨 mode 切換 ===
+    strict = mode == "realtime"
     validator = PBEventValidator(strict=True)
     core = PerceptionPipelineCore(validator=validator)
 

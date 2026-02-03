@@ -57,13 +57,11 @@ class GovernanceSnapshotHandler:
             source="governance.parliament",
             payload={
                 "agenda_id": agenda_id,
-                "decision": {
-                    **decision.to_dict(),
-
-                    # 👇 新增這兩個（文明級關鍵）
-                    "report_type": "daily",        # daily / weekly / monthly
-                    "narration_cost": "low",       # low / high
-                },
+                "proposal_id": decision.proposal_id,
+                "result": decision.outcome if hasattr(decision, "outcome") else decision.result,
+                # 附加欄位（給 narration / output 用）
+                "report_type": "daily",
+                "narration_cost": "low",
                 "ts": datetime.now(timezone.utc).isoformat(),
             },
         )

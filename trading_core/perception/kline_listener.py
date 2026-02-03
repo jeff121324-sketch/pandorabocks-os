@@ -11,12 +11,14 @@ def register_kline_listener(bus, world_rt=None):
     def on_kline(event):
         payload = event.payload
 
-        print(
-            f"[Perception] 📈 KLINE "
-            f"{payload.get('symbol')} "
-            f"{payload.get('interval')} "
-            f"close={payload.get('close')}"
-        )
+        # 僅在 debug / startup / error 時印
+        if payload.get("source") in ("startup_probe", "post_attach_probe"):
+            print(
+                f"[Perception] 📈 KLINE "
+                f"{payload.get('symbol')} "
+                f"{payload.get('interval')} "
+                f"close={payload.get('close')}"
+            )
 
         # 🧠 世界正式承認：我看到這件事
         if world_rt is not None:

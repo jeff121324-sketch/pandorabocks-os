@@ -28,7 +28,14 @@ class EventBus:
             try:
                 cb(data)
             except Exception as e:
-                print(f"[EVENT ERROR] {event_type}: {e}")
+                import traceback
+                print("\n" + "=" * 80)
+                print(f"[EVENT ERROR] type = {event_type}")
+                print(f"[EVENT ERROR] callback = {cb}")
+                print(f"[EVENT ERROR] payload = {repr(data)}")
+                print("[EVENT ERROR] traceback:")
+                traceback.print_exc()
+                print("=" * 80 + "\n")
 
     # ------------------------------
     # PB-Lang 事件入口

@@ -3,22 +3,43 @@ import os
 from pathlib import Path
 from datetime import datetime
 
+# ======================================================
+# 🔒 Final canonical market CSV schema（必須在這裡定義）
+# ======================================================
+MARKET_CSV_FIELDS = [
+    "source",
+    "market",
+    "symbol",
+    "interval",
+    "kline_open_ts",
+    "kline_close_ts",
+    "fetch_ts",
+    "human_open_time",
+    "human_open_time_local",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+]
 
 class MarketCSVWriter:
     def __init__(self, root="data/market_csv"):
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def write(self, records: list[dict]):
+    def write(self, records: list[dict], *, symbol: str, interval: str):
         print("[CSV] write called", len(records))
         if not records:
             return
 
-        r0 = records[0]
-        symbol = r0["symbol"].replace("/", "_")
-        interval = r0["interval"]
+        if not symbol or not interval:
+            raise ValueError(
+                "MarketCSVWriter.write requires explicit symbol and interval"
+            )
 
-        filename = f"{symbol}_{interval}.csv"
+        symbol_safe = symbol.replace("/", "_")
+        filename = f"{symbol_safe}_{interval}.csv"
         path = self.root / filename
 
         write_header = not path.exists()
@@ -26,11 +47,14 @@ class MarketCSVWriter:
         with path.open("a", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(
                 f,
-                fieldnames=records[0].keys()
+                fieldnames=MARKET_CSV_FIELDS,
+                extrasaction="ignore",   # 🔒 關鍵：多的欄位直接丟掉
             )
 
             if write_header:
                 writer.writeheader()
 
             for r in records:
-                writer.writerow(r)
+                # 🔒 缺欄位補 None，避免 writer 崩
+                row = {k: r.get(k) for k in MARKET_CSV_FIELDS}
+                writer.writerow(row)

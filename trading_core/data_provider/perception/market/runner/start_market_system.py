@@ -27,6 +27,9 @@ from trading_core.data_provider.perception.market.runner.backfill_history import
     backfill
 )
 
+from trading_core.data_provider.perception.market.runner.live_market_tick_provider import (
+    LiveMarketTickProvider
+)
 
 CSV_ROOT = "trading_core/data/raw/binance_csv"
 SYMBOL = "BTC/USDT"
@@ -47,6 +50,11 @@ def main():
 
     fetcher = BinanceRawFetcher()
     writer = MarketCSVWriter(root=CSV_ROOT)
+
+    # ⭐ v1.7：建立 LiveMarketTickProvider（世界唯一出口）
+    provider = LiveMarketTickProvider(
+        world_id="crypto.btc.spot"
+    )
 
     current_ts = now_ts()
 
@@ -87,6 +95,7 @@ def main():
                 from_ts=last_ts + sec,
                 to_ts=current_ts,
                 csv_root=CSV_ROOT,
+                provider=provider,
             )
         else:
             print(f"✅ {interval} up to date")

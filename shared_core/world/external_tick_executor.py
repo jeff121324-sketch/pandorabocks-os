@@ -23,6 +23,23 @@ class ExternalTickExecutor:
         self.world_context = world_context
 
     def attach(self):
+        # =========================================
+        # 🛑 WORLD-AWARE GUARD（關鍵修正）
+        # =========================================
+        world_type = getattr(self.world_context, "domain", None)
+
+        if world_type == "trading":
+            print(
+                "[ExternalTickExecutor] 🚫 Trading world detected → "
+                "REPLAY external tick is forbidden"
+            )
+            # trading world 只允許 realtime
+            self._attach_realtime()
+            return
+
+        # =========================================
+        # 原本邏輯（保留）
+        # =========================================
         mode = self.profile.mode or {}
 
         if mode.get("replay"):

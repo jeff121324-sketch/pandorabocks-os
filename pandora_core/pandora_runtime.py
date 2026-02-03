@@ -151,6 +151,7 @@ class PandoraRuntime:
             engine=parliament_engine,
             snapshot_handler=snapshot_handler,
             decision_persistence_handler=decision_persistence_handler,
+            parliament=parliament_engine,     
         )
         # 1️⃣ 先做 capability 檢查（制度）
         self._runtime_attach_guard.ensure_can_attach(
@@ -313,21 +314,56 @@ class PandoraRuntime:
         Attach a live WorldRuntime to Pandora OS
         """
         self.world_runtime = world_rt
+
         # ✅ 世界存在後，才接 perception listener
         from trading_core.perception.kline_listener import register_kline_listener
         register_kline_listener(self.fast_bus, world_rt)
+
         # 2️⃣ 啟動 Live Market Tick Provider（🔥 關鍵）
         if live_provider is not None:
             live_provider.start(callback=self.fast_bus.publish)
+            self.live_market_tick_provider = live_provider
 
             print(
                 f"[PandoraRuntime] 🟢 LiveMarketTickProvider started "
                 f"(world={world_rt.context.world_id})"
             )
+
+           # ===============================
+            # v1.6 LiveCSVWatcher（責任收斂）
+            # ===============================
+            from trading_core.data_provider.perception.market.runner.live_csv_watcher import (
+            LiveCSVWatcher
+            )
+            from pathlib import Path
+            import threading
+
+            intervals = ["15m", "1h", "4h"]
+            for interval in intervals:
+                csv_path = Path(
+                    f"trading_core/data/raw/binance_csv/BTC_USDT_{interval}.csv"
+                )
+
+                watcher = LiveCSVWatcher(
+                    csv_path=csv_path,
+                    provider=self.live_market_tick_provider,
+                    symbol="BTC/USDT",
+                    interval=interval,
+                )
+            
+                threading.Thread(
+                    target=watcher.start,
+                    daemon=True,
+                    name=f"LiveCSVWatcher-{interval}",
+                ).start()
+                
+            print("[PandoraRuntime] 🧲 LiveCSVWatcher started")
+
         print(
             f"[PandoraRuntime] 🌍 WorldRuntime attached: "
             f"{world_rt.context.world_id}"
         )
+
     # --------------------------------------------------------------------------------------           
     # 外部 Tick 來源注入（TradingRuntime / AISOPRuntime / Functions）
     # --------------------------------------------------------------------------------------

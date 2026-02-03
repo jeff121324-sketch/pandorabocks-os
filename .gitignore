@@ -45,3 +45,9 @@ test_data/
 outputs/**/*.json
 outputs/**/*.csv
 outputs/**/*.log
+# ===== Trading runtime artifacts =====
+trading_core/data/**/*.csv
+trading_core/data/**/*.bak
+trading_core/data/raw/analysis/
+trading_core/data/indicators/
+reports/

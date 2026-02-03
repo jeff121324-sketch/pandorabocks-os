@@ -1,6 +1,7 @@
 import time
 import os
 import ccxt
+import random
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -9,7 +10,31 @@ from ..base.fetcher_base import RawMarketFetcherBase
 
 load_dotenv()
 
-
+def safe_fetch_ohlcv(
+    exchange,
+    *,
+    symbol: str,
+    timeframe: str,
+    since: int | None = None,
+    limit: int = 1000,
+    max_retry: int = 5,
+):
+    for attempt in range(max_retry):
+        try:
+            return exchange.fetch_ohlcv(
+                symbol=symbol,
+                timeframe=timeframe,
+                since=since,
+                limit=limit,
+            )
+        except ccxt.NetworkError as e:
+            wait = min(2 ** attempt + random.random(), 30)
+            print(f"[Binance] ⚠ NetworkError retry {attempt+1}/{max_retry} in {wait:.1f}s")
+            time.sleep(wait)
+        except ccxt.ExchangeError:
+            # 交易所回錯（例如封 IP / maintenance）
+            raise
+    raise RuntimeError("❌ Binance fetch failed after retries")
 
 class BinanceRawFetcher(RawMarketFetcherBase):
     def __init__(self):
@@ -19,10 +44,26 @@ class BinanceRawFetcher(RawMarketFetcherBase):
             "enableRateLimit": True,
             "options": {"defaultType": "spot"},
         })
-
+        self._last_fetch_ts: dict[str, float] = {}
+        self._history_fetching = False
     def fetch(self, symbol: str, interval: str) -> list[dict]:
+
+        if not hasattr(self, "_last_fetch_ts"):
+            self._last_fetch_ts = {}
+
         fetch_ts = time.time()
         interval_sec = BINANCE_INTERVAL_MAP[interval]["seconds"]
+
+        # ==================================================
+        # ⭐ Throttle：一個 interval 內只 fetch 一次
+        # ==================================================
+        last = self._last_fetch_ts.get(interval, 0)
+        if fetch_ts - last < interval_sec:
+            # 還沒到下一根 K 線，安全地什麼都不做
+            return []
+
+        # 更新 fetch 時間
+        self._last_fetch_ts[interval] = fetch_ts
 
         candles = self._fetch_from_binance(symbol, interval)
 
@@ -64,22 +105,27 @@ class BinanceRawFetcher(RawMarketFetcherBase):
     def _fetch_from_binance(self, symbol: str, interval: str):
         timeframe = BINANCE_INTERVAL_MAP[interval]["ccxt"]
 
-        ohlcv = self.exchange.fetch_ohlcv(
+        ohlcv = safe_fetch_ohlcv(
+            self.exchange,
             symbol=symbol,
             timeframe=timeframe,
-            limit=2,
+            limit=3,
         )
 
         candles = []
-        for ts_ms, o, h, l, c, v in ohlcv:
-            candles.append({
-                "open_ts": ts_ms / 1000,  # 秒
-                "open": float(o),
-                "high": float(h),
-                "low": float(l),
-                "close": float(c),
-                "volume": float(v),
-            })
+
+        # ⭐ 只取「倒數第二根」＝ 已 close
+        ts_ms, o, h, l, c, v = ohlcv[-2]
+
+        candles.append({
+            "open_ts": ts_ms / 1000,  # 秒
+            "open": float(o),
+            "high": float(h),
+            "low": float(l),
+            "close": float(c),
+            "volume": float(v),
+        })
+
 
         return candles
     def fetch_history(
@@ -94,6 +140,12 @@ class BinanceRawFetcher(RawMarketFetcherBase):
         Historical backfill fetcher.
         This method is ONLY for history bootstrap.
         """
+
+        if self._history_fetching:
+            print("[Binance] ⏸ history fetch already running, skip")
+            return []
+
+        self._history_fetching = True
         interval_sec = BINANCE_INTERVAL_MAP[interval]["seconds"]
         timeframe = BINANCE_INTERVAL_MAP[interval]["ccxt"]
 
@@ -103,7 +155,8 @@ class BinanceRawFetcher(RawMarketFetcherBase):
         records = []
 
         while True:
-            ohlcv = self.exchange.fetch_ohlcv(
+            ohlcv = safe_fetch_ohlcv(
+                self.exchange,
                 symbol=symbol,
                 timeframe=timeframe,
                 since=since_ms,
@@ -153,8 +206,10 @@ class BinanceRawFetcher(RawMarketFetcherBase):
 
             # 尊重交易所 rate limit
             time.sleep(self.exchange.rateLimit / 1000)
-
+            
+        self._history_fetching = False
         return records
+    
     def fetch_history_max(
         self,
         symbol: str,

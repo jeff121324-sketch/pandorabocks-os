@@ -170,9 +170,6 @@ class MarketKlineAdapter(PerceptionAdapter):
         return raw
 
 
-
-
-
     # -------------------------------------------------------
     # 【4】Enrich：補齊 interval / ts
     # -------------------------------------------------------

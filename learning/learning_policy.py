@@ -17,34 +17,20 @@ class LearningDecision:
 
 
 class LearningPolicy:
-    """
-    Learning Policy (Level 1)
-
-    - Can ACCEPT or REJECT learning requests
-    - Does NOT train
-    - Does NOT modify personas
-    """
-
     def evaluate(
         self,
         request: LearningRequest,
-        snapshot: PersonaTrustSnapshot,
+        snapshot: PersonaTrustSnapshot | None,
     ) -> LearningDecision:
-        # Rule 1: insufficient trust data
-        if snapshot.trust_score == 0.0 and snapshot.stability_score == 0.0:
+
+        # Learning v0：不使用 trust snapshot
+        if snapshot is None:
             return LearningDecision(
-                accepted=False,
-                reason="insufficient_long_term_data",
+                accepted=True,
+                reason="learning_v0_observation_only",
             )
 
-        # Rule 2: learning integrity too low (possible exploitation)
-        if snapshot.learning_integrity < 0.3:
-            return LearningDecision(
-                accepted=False,
-                reason="learning_integrity_too_low",
-            )
-
-        # Rule 3: default allow (still no execution)
+        # （v1 以後才會走到下面）
         return LearningDecision(
             accepted=True,
             reason="learning_allowed_by_policy",

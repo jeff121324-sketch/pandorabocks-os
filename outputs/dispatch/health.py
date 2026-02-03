@@ -10,6 +10,7 @@ TZ_TW = timezone(timedelta(hours=8))
 
 # 簡單 cooldown，避免洗版
 _last_sent = {}
+_last_warning_sent = {}
 
 COOLDOWN_SECONDS = 60 * 10  # 10 分鐘
 
@@ -20,7 +21,7 @@ def dispatch_health_warning(event):
     - 有 cooldown
     - 不吵人
     """
-    payload = event 
+    payload = event.payload 
 
     reason = payload.get("reason", "unknown")
     interval = payload.get("interval", "N/A")
@@ -54,7 +55,7 @@ def dispatch_health_error(event):
     - 🚨 一定通知
     - 🔔 可升級通知 owner
     """
-    payload = event 
+    payload = event.payload
 
     world_id = payload.get("world_id", "unknown")
     reason = payload.get("reason", "unknown")

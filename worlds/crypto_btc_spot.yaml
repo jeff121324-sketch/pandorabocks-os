@@ -32,4 +32,4 @@ personality:
 
 permission:
   allow_trade: false
-  allow_external_tick: false
+  allow_external_tick: true
